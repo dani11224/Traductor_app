@@ -28,7 +28,8 @@
           "backgroundColor": "#ffffff",
           "image": "src/assets/images/splash-icon.png"
         }
-      ]
+      ],
+      "expo-router"
     ]
   }
 }

@@ -3,6 +3,8 @@
   "compilerOptions": {
     "strict": true,
     "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
     "paths": {
       "@/*": [
         "./src/*"
@@ -12,5 +14,9 @@
   "include": [
     "**/*.ts",
     "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/node_modules/*"
   ]
 }
