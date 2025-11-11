@@ -4,16 +4,12 @@
     "strict": true,
     "moduleResolution": "bundler",
     "skipLibCheck": true,
-    "skipDefaultLibCheck": true,
-    "paths": {
-      "@/*": [
-        "./src/*"
-      ]
-    }
+    "skipDefaultLibCheck": true
   },
   "include": [
     "**/*.ts",
-    "**/*.tsx"
+    "**/*.tsx",
+    "babel.config.js"
   ],
   "exclude": [
     "node_modules",

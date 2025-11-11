@@ -24,6 +24,9 @@ export default function ScreenBackground({
   const scheme = useColorScheme();
   const src = scheme === "dark" ? darkSrc : lightSrc;
 
+  console.log('Image source:', src);
+  console.log('Color scheme:', scheme);
+
   return (
     <View style={styles.root}>
       <ImageBackground
@@ -35,8 +38,8 @@ export default function ScreenBackground({
       <LinearGradient
         colors={
           scheme === "dark"
-            ? ["rgba(14,18,24,0.30)", "rgba(14,18,24,0.65)"]
-            : ["rgba(247,248,251,0.45)", "rgba(247,248,251,0.80)"]
+            ? ["rgba(14,18,24,0.15)", "rgba(14,18,24,0.40)"]
+            : ["rgba(247,248,251,0.15)", "rgba(247,248,251,0.30)"]
         }
         pointerEvents="none"
         style={StyleSheet.absoluteFillObject}
@@ -47,6 +50,13 @@ export default function ScreenBackground({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "transparent" },
-  content: { flex: 1 },
+  root: { 
+    flex: 1, 
+    backgroundColor: "transparent",
+    position: 'relative'
+  },
+  content: { 
+    flex: 1,
+    zIndex: 1
+  },
 });

@@ -7,44 +7,35 @@ import { useColorScheme } from 'react-native';
 
 import { Colors } from './constants/Colors';
 import { Navigation } from './navigation';
+import { PageTurnProvider } from './components/transitions/PageTurnOverlay'; // 👈
 
 SplashScreen.preventAutoHideAsync();
 
-export function App() {
+export default function App() { // 👈 export default
   const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     SpaceMono: require('./assets/fonts/SpaceMono-Regular.ttf'),
   });
 
-  if (!loaded) {
-    // Async font loading only occurs in development.
-    return null;
-  }
+  if (!loaded) return null;
 
   const theme =
     colorScheme === 'dark'
-      ? {
-          ...DarkTheme,
-          colors: { ...DarkTheme.colors, primary: Colors[colorScheme ?? 'light'].tint },
-        }
-      : {
-          ...DefaultTheme,
-          colors: { ...DefaultTheme.colors, primary: Colors[colorScheme ?? 'light'].tint },
-        };
+      ? { ...DarkTheme, colors: { ...DarkTheme.colors, primary: Colors[colorScheme ?? 'light'].tint } }
+      : { ...DefaultTheme, colors: { ...DefaultTheme.colors, primary: Colors[colorScheme ?? 'light'].tint } };
 
   return (
-    <Navigation
-      theme={theme}
-      linking={{
-        enabled: 'auto',
-        prefixes: [
-          // Change the scheme to match your app's scheme defined in app.json
-          'helloworld://',
-        ],
-      }}
-      onReady={() => {
-        SplashScreen.hideAsync();
-      }}
-    />
+    <PageTurnProvider> {/* 👈 habilita usePageTurn() en toda la app */}
+      <Navigation
+        theme={theme}
+        linking={{
+          enabled: true,
+          prefixes: ['helloworld://'],
+        }}
+        onReady={() => {
+          SplashScreen.hideAsync();
+        }}
+      />
+    </PageTurnProvider>
   );
 }

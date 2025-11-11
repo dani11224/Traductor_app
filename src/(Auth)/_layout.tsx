@@ -4,8 +4,8 @@ import { Stack } from "expo-router";
 import ScreenBackground from "../components/ScreenBackground";
 
 // Importa las imágenes aquí (rutas desde app/(Auth)/)
-const LIGHT_BG = require("../../assets/backgrounds/bg_clear.png");
-const DARK_BG  = require("../../assets/backgrounds/bg_dark.png");
+const LIGHT_BG = require("../assets/backgrounds/bg_clear.png");
+const DARK_BG  = require("../assets/backgrounds/bg_dark.png");
 
 export default function AuthLayout() {
   return (
