@@ -1,18 +1,19 @@
+// src/(Auth)/Login.tsx
 import { SafeAreaView } from "react-native-safe-area-context";
 import React, { useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StatusBar,
   KeyboardAvoidingView, Platform, StyleSheet, Dimensions,
-  ImageBackground, useColorScheme,
+  ImageBackground, useColorScheme, Alert,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-import { useNavigation } from '@react-navigation/native';
-import type { NavigationProp } from '@react-navigation/native';
-// importa el tipo RootStackParamList desde donde defines tu stack:
-import type { RootStackParamList } from '../navigation'; // ajusta ruta
-import { usePageTurn, HideWhileTurning } from "../components/transitions/PageTurnOverlay";
-
+// import { useNavigation } from "@react-navigation/native";
+// import type { NavigationProp } from "@react-navigation/native";
+// import type { RootStackParamList } from "../navigation";
+import { usePageTurn, HideWhileTurning } from "../../src/components/transitions/PageTurnOverlay";
+import { useRouter } from 'expo-router';
+import { supabase } from '../../src/lib/supabase';
 
 /** Paleta PastelDark */
 type Palette = {
@@ -30,38 +31,60 @@ const colors: Palette = {
   highlight:"#FDE68A22",
 };
 
-/** Dimensiones y constantes de layout */
+/** Dimensiones/constantes */
 const { width: W, height: H } = Dimensions.get("window");
 const COMPACT   = H < 740;
 const HEADER_H  = COMPACT ? 96 : 110;
-const RADIUS_TL = Math.round(W * 0.24);
-const TOP_PAD   = Math.round(RADIUS_TL * 0.35);
-
-/** Ancho máximo del contenido (inputs/botón) */
+const RADIUS_TR = Math.round(W * 0.24); // curva grande arriba-derecha
+const TOP_PAD   = Math.round(RADIUS_TR * 0.35);
 const CONTENT_W = Math.min(Math.round(W * 0.8), 420);
+const INPUT_H   = COMPACT ? 42 : 46;
+const VSP       = COMPACT ? 8  : 10;
 
-/** Tamaños compactos para que todo quepa sin scroll */
-const INPUT_H = COMPACT ? 42 : 46;
-const VSP     = COMPACT ? 8  : 10;
+// Fondos (ajusta ruta si lo necesitas)
+const LIGHT_BG = require("../../src/assets/backgrounds/bg_clear.png");
+const DARK_BG  = require("../../src/assets/backgrounds/bg_dark.png");
 
-// Fondos locales para esta pantalla (ajusta rutas si es necesario)
-const LIGHT_BG = require("../assets/backgrounds/bg_clear.png");
-const DARK_BG  = require("../assets/backgrounds/bg_dark.png");
-
-export default function Register() {
-  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+export default function Login() {
+  const router = useRouter();
   const { turnTo } = usePageTurn();
   const scheme = useColorScheme();
-  const [firstName, setFirstName] = useState("");
-  const [lastName,  setLastName]  = useState("");
-  const [email,     setEmail]     = useState("");
-  const [password,  setPassword]  = useState("");
-  const [confirm,   setConfirm]   = useState("");
+  const [email, setEmail]       = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading]   = useState(false);
 
   const s = styles(colors);
 
-  const handleSignUp = () => {
-    console.log({ firstName, lastName, email, password, confirm });
+  const handleLogin = async () => {
+    try {
+      const mail = email.trim();
+      if (!mail || !password) {
+        Alert.alert('Missing data', 'Please enter your email and password.');
+        return;
+      }
+      setLoading(true);
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: mail,
+        password,
+      });
+
+      if (error) {
+        if (error.message.toLowerCase().includes('confirm')) {
+          Alert.alert('Verify your email', 'Please confirm your email before signing in.');
+          return;
+        }
+        Alert.alert('Login error', error.message);
+        return;
+      }
+
+      // Éxito → navega al Tab "library"
+      turnTo(() => router.replace('/(Tabs)/library'), 'right');
+    } catch (e: any) {
+      Alert.alert('Unexpected error', e?.message ?? 'Something went wrong.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -73,40 +96,26 @@ export default function Register() {
       <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: "transparent" }}>
         <StatusBar barStyle="light-content" />
 
-        {/* HEADER (transparente; la curva la hace el sheet) */}
+        {/* HEADER transparente */}
         <View style={s.header}>
-          <TouchableOpacity onPress={() => navigation?.goBack?.()} style={s.backBtn}>
+          <TouchableOpacity onPress={() => router.replace('/(Auth)/Register')} style={s.backBtn}>
             <Text style={s.backArrow}>‹</Text>
           </TouchableOpacity>
-          <Text style={s.headerTitle}>Sign Up</Text>
+          <Text style={s.headerTitle}>Sign In</Text>
         </View>
 
-        {/* SHEET con efecto "Liquid Glass" */}
+        {/* SHEET “Liquid Glass” apoyado a la IZQUIERDA (curva arriba-derecha) */}
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <GlassSheet>
-            {/* Campos (1 columna, angostos, centrados) */}
+          <GlassSheetLeft>
+            {/* Campos */}
             <HideWhileTurning>
               <View style={s.formContainer}>
                 <LabeledInput
-                  label="First name"
-                  placeholder="Vijay"
-                  value={firstName}
-                  onChangeText={setFirstName}
-                  colors={colors}
-                />
-                <LabeledInput
-                  label="Last name"
-                  placeholder="Bhuva"
-                  value={lastName}
-                  onChangeText={setLastName}
-                  colors={colors}
-                />
-                <LabeledInput
                   label="Email"
-                  placeholder="vijaybhuva90@gmail.com"
+                  placeholder="you@example.com"
                   keyboardType="email-address"
                   autoCapitalize="none"
                   value={email}
@@ -121,99 +130,116 @@ export default function Register() {
                   onChangeText={setPassword}
                   colors={colors}
                 />
-                <LabeledInput
-                  label="Confirm password"
-                  placeholder="••••••••"
-                  secureTextEntry
-                  value={confirm}
-                  onChangeText={setConfirm}
-                  colors={colors}
-                />
+
+                <TouchableOpacity onPress={() => { /* TODO: forgot flow */ }}>
+                  <Text style={{ color: colors.textMuted, textAlign: "right", marginTop: 2 }}>
+                    Forgot password?
+                  </Text>
+                </TouchableOpacity>
               </View>
             </HideWhileTurning>
 
-            {/* CTA fijo al fondo (mismo ancho angosto) */}
+            {/* CTA */}
             <View style={s.formBottom}>
               <View style={s.formContainer}>
-                <TouchableOpacity style={s.primaryBtn} onPress={handleSignUp}>
-                  <Text style={s.primaryBtnText}>Sign Up</Text>
+                <TouchableOpacity
+                  style={[s.primaryBtn, { opacity: loading ? 0.7 : 1 }]}
+                  onPress={handleLogin}
+                  disabled={loading}
+                >
+                  <Text style={s.primaryBtnText}>
+                    {loading ? 'Signing in…' : 'Sign In'}
+                  </Text>
                 </TouchableOpacity>
                 <View style={s.footerRow}>
-                  <Text style={s.footerText}>Already have any account? </Text>
+                  <Text style={s.footerText}>Don’t have an account? </Text>
                   <TouchableOpacity
-                    onPress={() =>
-                      turnTo(() => navigation.navigate("Login"), "left") // "left" = pivote en izquierda, "right" = en derecha
-                    }
+                    onPress={() => turnTo(() => router.replace('/(Auth)/Register'), "right")} /* Esto se supone que gira a la izquierda
+                    pero por alguna razon esta invertido y no pude cambiarlo entonces dejalo asi que funciona como debe JAJAJAJ*/
                   >
-                    <Text style={s.footerLink}>Sign In</Text>
+                    <Text style={s.footerLink}>Sign Up</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             </View>
-          </GlassSheet>
+          </GlassSheetLeft>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </ImageBackground>
   );
 }
 
-/** ───────────────── GlassSheet (sólo el contenedor tiene blur) ───────────────── */
-function GlassSheet({ children }: { children: React.ReactNode }) {
+/** ───────────── GlassSheet invertido (curva arriba-derecha) ───────────── */
+function GlassSheetLeft({ children }: { children: React.ReactNode }) {
   const scheme = useColorScheme();
+  const isDark = scheme === "dark";
+
   return (
-    <View style={sheetStyles.pos /* posición y alto del sheet */}>
-      <View style={sheetStyles.clip /* recorte y bordes redondeados */}>
-        {/* Capa de blur detrás del contenido */}
+    <View style={sheetStylesLeft.pos}>
+      <View style={sheetStylesLeft.clip}>
+        {/* 1) Blur debajo del contenido */}
         <BlurView
-          intensity={scheme === "dark" ? 48 : 36}
-          tint={scheme === "dark" ? "dark" : "light"}
+          intensity={isDark ? 56 : 40}
+          tint={isDark ? "dark" : "light"}
           style={StyleSheet.absoluteFillObject}
         />
-        {/* Color de respaldo + opacidad para “vidrio” */}
+
+        {/* 2) Capa “frosted” para el look de vidrio */}
         <View
           pointerEvents="none"
           style={[
             StyleSheet.absoluteFillObject,
-            {
-              backgroundColor:
-                scheme === "dark"
-                  ? "rgba(18,23,35,0.45)"
-                  : "rgba(255,255,255,0.55)",
-            },
+            { backgroundColor: isDark ? "rgba(18,23,35,0.46)" : "rgba(255,255,255,0.58)" },
           ]}
         />
-        {/* Borde sutil exterior (brillo */}
-        <View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFillObject,
-            {
-              borderTopLeftRadius: RADIUS_TL,
-              borderWidth: 1,
-              borderColor:
-                scheme === "dark" ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)",
-            },
-          ]}
-        />
-        {/* Sheen superior (brillo líquido) */}
+
+        {/* 3) Sheen superior suave (sin cortes; cubre todo) */}
         <LinearGradient
           pointerEvents="none"
           colors={
-            scheme === "dark"
-              ? ["rgba(255,255,255,0.18)", "rgba(255,255,255,0.00)"]
-              : ["rgba(255,255,255,0.35)", "rgba(255,255,255,0.00)"]
+            isDark
+              ? ["rgba(255,255,255,0.20)", "rgba(255,255,255,0.00)"]
+              : ["rgba(255,255,255,0.38)", "rgba(255,255,255,0.00)"]
           }
+          start={{ x: 0.85, y: 0 }}
+          end={{ x: 0.2, y: 0.4 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+
+        {/* 4) Brillo de canto en el borde derecho */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={
+            isDark
+              ? ["rgba(255,255,255,0.22)", "rgba(255,255,255,0.00)"]
+              : ["rgba(255,255,255,0.55)", "rgba(255,255,255,0.00)"]
+          }
+          start={{ x: 1, y: 0.5 }}
+          end={{ x: 0.75, y: 0.5 }}
           style={{
             position: "absolute",
             top: 0,
-            left: 0,
             right: 0,
-            height: RADIUS_TL * 0.6,
+            width: 48,
+            height: "100%",
           }}
         />
 
-        {/* Contenido (no se blurea) */}
-        <View style={sheetStyles.content}>{children}</View>
+        {/* 5) Borde sutil del vidrio */}
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFillObject,
+            {
+              borderTopRightRadius: RADIUS_TR,
+              borderWidth: 1,
+              borderColor: isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)",
+            },
+          ]}
+        />
+
+        {/* 6) Contenido sin blur */}
+        <View style={sheetStylesLeft.content}>{children}</View>
       </View>
     </View>
   );
@@ -248,7 +274,7 @@ function LabeledInput(props: any) {
   );
 }
 
-/** Estilos generales (header, inputs, CTA) */
+/** Estilos generales */
 const styles = (c: Palette) =>
   StyleSheet.create({
     header: {
@@ -280,7 +306,6 @@ const styles = (c: Palette) =>
       zIndex: 2,
     },
 
-    /** contenedor angosto y centrado para inputs y botón */
     formContainer: {
       width: CONTENT_W,
       alignSelf: "center",
@@ -309,9 +334,8 @@ const styles = (c: Palette) =>
     footerLink: { color: c.text, fontWeight: "700" },
   });
 
-/** Estilos del sheet “Liquid Glass” */
-const sheetStyles = StyleSheet.create({
-  // misma posición/alto que antes
+/** Estilos del sheet invertido (apoyado a la IZQUIERDA) */
+const sheetStylesLeft = StyleSheet.create({
   pos: {
     position: "absolute",
     top: HEADER_H - 8,
@@ -320,16 +344,14 @@ const sheetStyles = StyleSheet.create({
     left: 0,
     zIndex: 1,
   },
-  // clip con curva grande y overflow oculto (el blur respeta el radio)
   clip: {
     flex: 1,
-    borderTopLeftRadius: RADIUS_TL,
-    borderTopRightRadius: 0,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: RADIUS_TR, // curva en la esquina superior derecha
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
     overflow: "hidden",
   },
-  // padding y distribución interna del contenido
   content: {
     flex: 1,
     paddingTop: TOP_PAD,

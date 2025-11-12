@@ -29,7 +29,8 @@
           "image": "src/assets/images/splash-icon.png"
         }
       ],
-      "expo-router"
+      "expo-router",
+      "expo-web-browser"
     ]
   }
 }

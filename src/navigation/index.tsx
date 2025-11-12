@@ -1,7 +1,9 @@
 import { NavigationContainer, type Theme, type LinkingOptions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import Register from '../(Auth)/Register';
-import Login from '../(Auth)/Login';
+import Register from '../../app/(Auth)/Register';
+import Login from '../../app/(Auth)/Login';
+import 'react-native-url-polyfill/auto';
+import 'react-native-get-random-values';
 
 export type RootStackParamList = {
   Register: undefined;
