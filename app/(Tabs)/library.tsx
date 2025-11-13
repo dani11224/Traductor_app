@@ -3,20 +3,19 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
-  FlatList,
+  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  TextInput,
   RefreshControl,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
-import * as WebBrowser from 'expo-web-browser';
 import * as FileSystem from 'expo-file-system';
 import { supabase } from '../../src/lib/supabase';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 /** 🎨 Paleta (misma del Login/Register) */
 type Palette = {
@@ -26,11 +25,19 @@ type Palette = {
   success: string; warning: string; error: string; highlight: string;
 };
 const colors: Palette = {
-  bg:"#0E1218", surface:"#121723", card:"#161B2A",
-  primary:"#A5B4FC", accent:"#7ADCC4", onPrimary:"#0B0F14",
-  text:"#E6EDF6", textMuted:"#A6B3C2", border:"#263243",
-  success:"#79E2B5", warning:"#FFD58A", error:"#FF9CA1",
-  highlight:"#FDE68A22",
+  bg: '#0E1218',
+  surface: '#121723',
+  card: '#161B2A',
+  primary: '#A5B4FC',
+  accent: '#7ADCC4',
+  onPrimary: '#0B0F14',
+  text: '#E6EDF6',
+  textMuted: '#A6B3C2',
+  border: '#263243',
+  success: '#79E2B5',
+  warning: '#FFD58A',
+  error: '#FF9CA1',
+  highlight: '#FDE68A22',
 };
 
 type DocRow = {
@@ -54,8 +61,6 @@ export default function LibraryScreen() {
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameText, setRenameText] = useState('');
 
   const s = useMemo(() => styles(colors), []);
 
@@ -91,7 +96,9 @@ export default function LibraryScreen() {
       const mime = asset.mimeType ?? 'application/octet-stream';
 
       // Usuario
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
         Alert.alert('Not authenticated', 'Please sign in to upload files.');
         return;
@@ -103,7 +110,7 @@ export default function LibraryScreen() {
         Math.random().toString(36).slice(2);
       const objectName = `${user.id}/${docId}-${filename}`;
 
-      // === CARGA DE BYTES DESDE URI (NO tocar: arrayBuffer + 'base64') ===
+      // === CARGA DE BYTES DESDE URI ===
       let body: ArrayBuffer;
       try {
         const res = await fetch(asset.uri);
@@ -122,7 +129,7 @@ export default function LibraryScreen() {
         body = base64ToArrayBuffer(base64);
       }
 
-      // 1) Subir a Storage (dejamos ArrayBuffer tal cual)
+      // 1) Subir a Storage
       const { error: upErr } = await supabase.storage
         .from('documents')
         .upload(objectName, body, {
@@ -146,7 +153,7 @@ export default function LibraryScreen() {
 
       if (error) throw error;
 
-      setDocs(prev => [data as DocRow, ...prev]);
+      setDocs((prev) => [data as DocRow, ...prev]);
       Alert.alert('Done', 'File uploaded successfully.');
     } catch (e: any) {
       Alert.alert('Upload error', e?.message ?? 'Unexpected error');
@@ -155,166 +162,165 @@ export default function LibraryScreen() {
     }
   }, []);
 
-  const openDoc = useCallback(async (doc: DocRow) => {
-    router.push({ pathname: '/[id]', params: { id: doc.id } });
-  }, []);
-
-  const confirmDelete = useCallback((doc: DocRow) => {
-    Alert.alert('Delete', `Remove "${doc.original_filename}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteDoc(doc) },
-    ]);
-  }, []);
+  const openDoc = useCallback(
+    async (doc: DocRow) => {
+      router.push({ pathname: '/[id]', params: { id: doc.id } });
+    },
+    [router],
+  );
 
   const deleteDoc = useCallback(async (doc: DocRow) => {
     try {
-      const { error: delS } = await supabase.storage.from('documents').remove([doc.storage_path]);
+      const { error: delS } = await supabase.storage
+        .from('documents')
+        .remove([doc.storage_path]);
       if (delS) throw delS;
-      const { error } = await supabase.from('documents').delete().eq('id', doc.id);
+
+      const { error } = await supabase
+        .from('documents')
+        .delete()
+        .eq('id', doc.id);
       if (error) throw error;
-      setDocs(prev => prev.filter(d => d.id !== doc.id));
+
+      setDocs((prev) => prev.filter((d) => d.id !== doc.id));
     } catch (e: any) {
       Alert.alert('Delete error', e?.message ?? 'Error');
     }
   }, []);
 
-  const startRename = useCallback((doc: DocRow) => {
-    setRenamingId(doc.id);
-    setRenameText(doc.title ?? doc.original_filename);
-  }, []);
+  const confirmDelete = useCallback(
+    (doc: DocRow) => {
+      Alert.alert('Delete', `Remove "${doc.original_filename}"?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteDoc(doc) },
+      ]);
+    },
+    [deleteDoc],
+  );
 
-  const saveRename = useCallback(async () => {
-    if (!renamingId) return;
-    try {
-      const { data, error } = await supabase
-        .from('documents')
-        .update({ title: renameText })
-        .eq('id', renamingId)
-        .select('*')
-        .single();
-      if (error) throw error;
-      setDocs(prev => prev.map(d => (d.id === renamingId ? (data as DocRow) : d)));
-      setRenamingId(null);
-      setRenameText('');
-    } catch (e: any) {
-      Alert.alert('Rename error', e?.message ?? 'Error');
-    }
-  }, [renamingId, renameText]);
-
-  const cancelRename = useCallback(() => {
-    setRenamingId(null);
-    setRenameText('');
-  }, []);
-
-  const renderItem = ({ item }: { item: DocRow }) => {
-    const isRenaming = item.id === renamingId;
-    return (
-      <View style={s.card}>
-        <Text style={s.timestamp}>
-          {new Date(item.created_at).toLocaleString()}
-        </Text>
-
-        {isRenaming ? (
-          <View style={{ marginTop: 8 }}>
-            <TextInput
-              value={renameText}
-              onChangeText={setRenameText}
-              placeholder="Title"
-              placeholderTextColor={colors.textMuted}
-              style={s.input}
-            />
-            <View style={s.row}>
-              <TouchableOpacity onPress={saveRename} style={s.btnPrimary}>
-                <Text style={s.btnPrimaryText}>Save</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={cancelRename} style={s.btnGhost}>
-                <Text style={s.btnGhostText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          <>
-            <Text style={s.title} numberOfLines={2}>
-              {item.title ?? item.original_filename}
-            </Text>
-            <Text style={s.subtitle}>
-              {item.mime_type ?? '—'} · {item.status.toUpperCase()}
-            </Text>
-
-            <View style={[s.row, { flexWrap: 'wrap' }]}>
-              <TouchableOpacity onPress={() => openDoc(item)} style={s.btnOutlineAccent}>
-                <Text style={s.btnOutlineAccentText}>Open</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={() => startRename(item)} style={s.btnGhost}>
-                <Text style={s.btnGhostText}>Rename</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={() => confirmDelete(item)} style={s.btnDanger}>
-                <Text style={s.btnDangerText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
+  const renderBookCard = (doc: DocRow) => (
+    <TouchableOpacity
+      key={doc.id}
+      style={s.bookCard}
+      activeOpacity={0.9}
+      onPress={() => openDoc(doc)}
+      onLongPress={() => confirmDelete(doc)}
+    >
+      <View style={s.bookCover}>
+        {/* Aquí luego puedes poner una Image con la portada real */}
+        <Text style={s.coverText}>PDF</Text>
       </View>
-    );
-  };
-
-  const header = useMemo(
-    () => (
-      <View style={s.headerWrap}>
-        <View style={s.header}>
-          <Text style={s.headerTitle}>Library</Text>
-          <Text style={s.headerSub}>Upload and manage your documents</Text>
-
-          <View style={s.row}>
-            <TouchableOpacity
-              onPress={pickAndUpload}
-              disabled={uploading}
-              style={[s.btnPrimary, uploading && { opacity: 0.7 }]}
-            >
-              <Text style={s.btnPrimaryText}>
-                {uploading ? 'Uploading…' : 'Upload'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={loadDocs} style={s.btnGhost}>
-              <Text style={s.btnGhostText}>Refresh</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    ),
-    [pickAndUpload, uploading, loadDocs, s]
+      <Text style={s.bookCardTitle} numberOfLines={1}>
+        {doc.title ?? doc.original_filename}
+      </Text>
+      <Text style={s.bookCardAuthor} numberOfLines={1}>
+        {doc.language ?? 'Unknown'}
+      </Text>
+    </TouchableOpacity>
   );
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={s.safe}>
       <View style={s.screen}>
-        {header}
-        {loading ? (
-          <View style={s.center}>
-            <ActivityIndicator size="large" />
-            <Text style={s.muted}>Loading…</Text>
+        {/* HEADER tipo maqueta */}
+        <View style={s.headerWrap}>
+          <View style={s.headerRow}>
+            <TouchableOpacity style={s.iconBtn}>
+              <Ionicons name="menu" size={24} color={colors.text} />
+            </TouchableOpacity>
+
+            <Text style={s.headerTitle}>My Library</Text>
+
+            <TouchableOpacity style={s.iconBtn}>
+              <Ionicons name="search" size={22} color={colors.text} />
+            </TouchableOpacity>
           </View>
-        ) : (
-          <FlatList
-            data={docs}
-            keyExtractor={(item) => item.id}
-            renderItem={renderItem}
-            contentContainerStyle={s.listContent}
-            refreshControl={
-              <RefreshControl refreshing={loading} onRefresh={loadDocs} tintColor={colors.accent} />
-            }
-            ListEmptyComponent={
-              <View style={s.empty}>
-                <Text style={s.muted}>
-                  No documents yet. Tap “Upload” to add your first file.
-                </Text>
+        </View>
+
+        {/* CONTENIDO */}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={s.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={loadDocs}
+              tintColor={colors.accent}
+            />
+          }
+        >
+          {/* My Books */}
+          <View style={s.section}>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionTitle}>My Books</Text>
+              <TouchableOpacity
+                onPress={pickAndUpload}
+                disabled={uploading}
+                style={s.sectionIconBtn}
+              >
+                <Ionicons
+                  name="add"
+                  size={22}
+                  color={colors.text}
+                  style={{ opacity: uploading ? 0.7 : 1 }}
+                />
+              </TouchableOpacity>
+            </View>
+
+            {loading && docs.length === 0 ? (
+              <View style={s.loadingRow}>
+                <ActivityIndicator size="small" color={colors.accent} />
+                <Text style={[s.muted, { marginLeft: 8 }]}>Loading…</Text>
               </View>
-            }
-          />
-        )}
+            ) : docs.length === 0 ? (
+              <Text style={s.muted}>
+                No books yet. Tap the + button to add one.
+              </Text>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={s.horizontalList}
+              >
+                {docs.map(renderBookCard)}
+              </ScrollView>
+            )}
+          </View>
+
+          {/* Saved Books (placeholder usando algunos docs) */}
+          <View style={s.section}>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionTitle}>Saved Books</Text>
+              <Ionicons name="bookmark" size={22} color={colors.text} />
+            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.horizontalList}
+            >
+              {docs.slice(0, 4).map(renderBookCard)}
+            </ScrollView>
+          </View>
+
+          {/* Shared Books (placeholder) */}
+          <View style={[s.section, { marginBottom: 24 }]}>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionTitle}>Shared Books</Text>
+              <TouchableOpacity style={s.sectionIconBtn}>
+                <Ionicons name="add" size={22} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.horizontalList}
+            >
+              {docs.slice(4).map(renderBookCard)}
+            </ScrollView>
+          </View>
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
@@ -322,7 +328,8 @@ export default function LibraryScreen() {
 
 /** Helper: Base64 → ArrayBuffer (fallback) */
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  const chars =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
   let bufferLength = base64.length * 0.75;
   if (base64.endsWith('==')) bufferLength -= 2;
   else if (base64.endsWith('=')) bufferLength -= 1;
@@ -347,96 +354,96 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-/** 🎯 Estilos con la paleta + márgenes para no pegar textos a los bordes */
+/** 🎯 Estilos con la paleta dark + layout de la maqueta */
 const styles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.bg },
     screen: { flex: 1, backgroundColor: c.bg },
 
-    // Header envuelto con padding horizontal grande para que no quede al borde
-    headerWrap: { paddingHorizontal: 20 },
-    header: { paddingTop: 8, paddingBottom: 10, gap: 6 },
-    headerTitle: { color: c.text, fontSize: 24, fontWeight: '800' },
-    headerSub: { color: c.textMuted },
-
-    listContent: {
-      paddingHorizontal: 20,   // ← margen lateral consistente
-      paddingTop: 4,
-      paddingBottom: 20,
+    headerWrap: {
+      paddingHorizontal: 20,
+      paddingTop: 8,
+      paddingBottom: 10,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    iconBtn: {
+      padding: 4,
+    },
+    headerTitle: {
+      flex: 1,
+      textAlign: 'center',
+      color: c.text,
+      fontSize: 18,
+      fontWeight: '800',
     },
 
-    center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
-    muted: { color: c.textMuted, marginTop: 10 },
+    scrollContent: {
+      paddingHorizontal: 20,
+      paddingBottom: 24,
+    },
 
-    card: {
-      backgroundColor: c.card,
-      borderColor: c.border,
-      borderWidth: 1,
-      padding: 16,
-      borderRadius: 16,
+    section: {
+      marginBottom: 20,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
       marginBottom: 12,
     },
-    timestamp: { color: c.textMuted, fontSize: 12 },
-    title: { color: c.text, fontSize: 17, fontWeight: '700', marginTop: 6 },
-    subtitle: { color: c.textMuted, marginTop: 4 },
-
-    row: { flexDirection: 'row', gap: 10, marginTop: 10 },
-
-    input: {
+    sectionTitle: {
       color: c.text,
+      fontSize: 20,
+      fontWeight: '800',
+    },
+    sectionIconBtn: {
+      padding: 6,
+      borderRadius: 999,
+      backgroundColor: c.card,
+    },
+
+    horizontalList: {
+      paddingRight: 12,
+    },
+
+    bookCard: {
+      width: 120,
+      marginRight: 12,
+    },
+    bookCover: {
+      height: 150,
+      borderRadius: 18,
+      backgroundColor: c.card,
+      borderWidth: 1,
       borderColor: c.border,
-      borderWidth: 1,
-      borderRadius: 12,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      marginBottom: 8,
-      backgroundColor: c.surface,
-    },
-
-    // Botones (sin “liquid glass”, solo sólidos/contorno con la paleta)
-    btnPrimary: {
-      backgroundColor: c.accent,
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
+      marginBottom: 6,
     },
-    btnPrimaryText: { color: c.onPrimary, fontWeight: '800' },
+    coverText: {
+      color: c.textMuted,
+      fontSize: 10,
+    },
+    bookCardTitle: {
+      color: c.text,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    bookCardAuthor: {
+      color: c.textMuted,
+      fontSize: 10,
+      marginTop: 2,
+    },
 
-    btnGhost: {
-      borderColor: c.border,
-      borderWidth: 1,
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      borderRadius: 12,
+    loadingRow: {
+      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: 'transparent',
     },
-    btnGhostText: { color: c.text, fontWeight: '700' },
-
-    btnOutlineAccent: {
-      backgroundColor: 'transparent',
-      borderColor: c.accent,
-      borderWidth: 1,
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
+    muted: {
+      color: c.textMuted,
+      fontSize: 12,
     },
-    btnOutlineAccentText: { color: c.accent, fontWeight: '700' },
-
-    btnDanger: {
-      backgroundColor: c.error,
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    btnDangerText: { color: '#fff', fontWeight: '800' },
-
-    empty: { paddingVertical: 20 },
   });

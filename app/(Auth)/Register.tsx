@@ -235,7 +235,7 @@ export default function Register() {
                 <View style={s.footerRow}>
                   <Text style={s.footerText}>Already have any account? </Text>
                   <TouchableOpacity
-                    onPress={() => turnTo(() => router.replace('/(Auth)/login'), "left")}
+                    onPress={() => turnTo(() => router.replace('/(Auth)/Login'), "left")}
                   >
                     <Text style={s.footerLink}>Sign In</Text>
                   </TouchableOpacity>
