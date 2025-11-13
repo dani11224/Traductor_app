@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ActivityIndicator, Alert, StyleSheet, ScrollView, Image, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, ActivityIndicator, Alert, StyleSheet, ScrollView, Image, TouchableOpacity, Platform, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { WebView } from 'react-native-webview';
@@ -24,6 +24,21 @@ type DocRow = {
   status: 'uploaded' | 'processing' | 'ready' | 'error';
 };
 
+// 🌍 Idiomas (ajusta a los que uses en LibreTranslate)
+const LANGS: { code: string; name: string }[] = [
+  { code: 'en', name: 'English' },
+  { code: 'es', name: 'Español' },
+  { code: 'fr', name: 'Français' },
+  { code: 'de', name: 'Deutsch' },
+  { code: 'pt', name: 'Português' },
+  { code: 'it', name: 'Italiano' },
+  { code: 'ja', name: '日本語' },
+  { code: 'ko', name: '한국어' },
+  { code: 'zh', name: '中文' },
+  { code: 'ar', name: 'العربية' },
+  { code: 'ru', name: 'Русский' },
+];
+
 export default function DocumentViewer() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -32,6 +47,26 @@ export default function DocumentViewer() {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [textContent, setTextContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Traducción
+  const [translating, setTranslating] = useState(false);
+  const [translatedText, setTranslatedText] = useState<string | null>(null);
+  const [translatedForLang, setTranslatedForLang] = useState<string | null>(null);
+  const [overlayOpen, setOverlayOpen] = useState(false);
+
+  // Idioma destino + picker
+  const [targetLang, setTargetLang] = useState<'en' | string>('en');
+  const [showLangPicker, setShowLangPicker] = useState(false);
+
+  // guardar copia traducida
+  const [saving, setSaving] = useState(false);
+  const [savedPath, setSavedPath] = useState<string | null>(null);
+
+  // 🆕 PDF: estados internos
+  const [pdfExtracting, setPdfExtracting] = useState(false);
+  const [mountPdfWV, setMountPdfWV] = useState(false);
+  const [pdfPendingTarget, setPdfPendingTarget] = useState<string | null>(null);
+  const [pdfAutoOpenOverlay, setPdfAutoOpenOverlay] = useState<boolean>(true);
 
   const s = useMemo(() => styles(colors), []);
 
@@ -74,6 +109,11 @@ export default function DocumentViewer() {
     })();
   }, [id]);
 
+  // Si cambias el idioma destino, cierra el overlay y evita confusiones
+  useEffect(() => {
+    setOverlayOpen(false);
+  }, [targetLang]);
+
   const title = doc?.title || doc?.original_filename || 'Document';
 
   const isPDF = useMemo(() => {
@@ -91,6 +131,232 @@ export default function DocumentViewer() {
     return m.startsWith('text/') || m === 'application/json';
   }, [doc]);
 
+  // 🆕 HTML (PDF.js) para extraer texto del PDF vía WebView invisible
+const pdfExtractHTML = useMemo(() => {
+  if (!signedUrl) return '';
+  const url = signedUrl.replace(/"/g, '&quot;');
+  return `
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(function(){
+  const pdfUrl = "${url}";
+  const { pdfjsLib } = window;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+  function itemsToText(content) {
+    const lines = [];
+    for (const it of content.items) { if (it && typeof it.str === 'string') lines.push(it.str); }
+    return lines.join("\\n");
+  }
+
+  pdfjsLib.getDocument({ url: pdfUrl }).promise.then(async (doc) => {
+    const pages = [];
+    for (let i=1; i<=doc.numPages; i++){
+      const page = await doc.getPage(i);
+      const text = await page.getTextContent();
+      pages.push(itemsToText(text));
+    }
+    const full = pages.join("\\n\\n---- Page Break ----\\n\\n");
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type:"pdfText", text: full }));
+  }).catch(err => {
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type:"error", message: String(err) }));
+  });
+})();
+</script>
+</body>
+</html>`;
+}, [signedUrl]);
+
+  // 👉 handler del botón Translate: traduce si hace falta y abre el overlay
+  const onPressTranslate = async () => {
+    try {
+      if (translating) return;
+
+      if (!isText) {
+        if (isPDF) {
+          // 👉 ahora sí traducimos PDF
+          return translatePdfNow({ to: targetLang, autoOpenOverlay: true });
+        } else {
+          Alert.alert('Not supported', 'Only plain text / JSON / PDF are supported for now.');
+          return;
+        }
+      }
+
+
+      // Si ya hay traducción para el idioma seleccionado, solo abre la UI
+      if (translatedText && translatedForLang === targetLang) {
+        setOverlayOpen(true);
+        return;
+      }
+
+      const plain = textContent ?? '';
+      if (!plain.trim()) {
+        Alert.alert('Empty', 'No text content to translate.');
+        return;
+      }
+
+      setTranslating(true);
+      const out = await ltTranslate({ text: plain, to: targetLang });
+      setTranslatedText(out);
+      setTranslatedForLang(targetLang);
+      setOverlayOpen(true);
+    } catch (e: any) {
+      Alert.alert('Translate error', e?.message ?? 'Failed to translate');
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  // 🆕 Monta el WebView extractor si hace falta
+const ensurePdfText = async () => {
+  if (!isPDF) return;
+  if (textContent && textContent.length > 0) return; // ya hay cache
+  if (!signedUrl) throw new Error('Missing signed URL for PDF');
+  setPdfExtracting(true);
+  setMountPdfWV(true);
+};
+
+// 🆕 Recibe el texto desde el WebView (PDF.js)
+const onPdfWVMessage = async (evt: any) => {
+  try {
+    const data = JSON.parse(evt?.nativeEvent?.data || '{}');
+    if (data.type === 'pdfText') {
+      setTextContent(data.text || '');
+      setPdfExtracting(false);
+      setMountPdfWV(false);
+
+      // ¿quedaba una traducción pendiente?
+      if (pdfPendingTarget) {
+        try {
+          setTranslating(true);
+          const out = await ltTranslate({ text: data.text || '', to: pdfPendingTarget });
+          setTranslatedText(out);
+          setTranslatedForLang(pdfPendingTarget);
+          if (pdfAutoOpenOverlay) setOverlayOpen(true);
+        } catch (e: any) {
+          Alert.alert('Translate error', e?.message ?? 'Failed to translate');
+        } finally {
+          setTranslating(false);
+          setPdfPendingTarget(null);
+        }
+      }
+    } else if (data.type === 'error') {
+      setPdfExtracting(false);
+      setMountPdfWV(false);
+      Alert.alert('PDF extract error', data.message || 'Unknown error');
+      setPdfPendingTarget(null);
+    }
+  } catch {
+    setPdfExtracting(false);
+    setMountPdfWV(false);
+    setPdfPendingTarget(null);
+  }
+};
+
+// 🆕 API pública: traducir PDF ahora (sin tocar tu onPressTranslate actual)
+// Llama: translatePdfNow({ to: targetLang, autoOpenOverlay: true })
+const translatePdfNow = async (opts?: { to?: string; autoOpenOverlay?: boolean }) => {
+  try {
+    if (!isPDF) {
+      Alert.alert('Not a PDF', 'This helper only handles PDFs.');
+      return;
+    }
+    const to = opts?.to ?? targetLang;
+    setPdfPendingTarget(to);
+    setPdfAutoOpenOverlay(opts?.autoOpenOverlay ?? true);
+
+    // Si aún no hay texto, primero extrae; el resto continúa en onPdfWVMessage
+    if (!textContent || textContent.length === 0) {
+      await ensurePdfText();
+      return;
+    }
+
+    // Si ya hay texto extraído, traduce directo
+    setTranslating(true);
+    const out = await ltTranslate({ text: textContent, to });
+    setTranslatedText(out);
+    setTranslatedForLang(to);
+    if (pdfAutoOpenOverlay) setOverlayOpen(true);
+  } catch (e: any) {
+    Alert.alert('PDF translate', e?.message ?? 'Unexpected error');
+  } finally {
+    setTranslating(false);
+  }
+};
+
+
+  const saveTranslatedCopy = async () => {
+    try {
+      if (!translatedText || !doc) {
+        Alert.alert('Nothing to save', 'Generate a translation first.');
+        return;
+      }
+      setSaving(true);
+
+      // 1) Usuario
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // 2) Nombre y ruta: <uid>/translations/<docId>-<lang>-<slug>.<ext>
+      const baseName =
+        (doc.title ?? doc.original_filename ?? 'document')
+          .replace(/[^\w.-]+/g, '_')
+          .slice(0, 80);
+
+      const isJson = (doc.mime_type ?? '').toLowerCase() === 'application/json';
+      const ext = isJson ? 'json' : 'txt';
+      const objectName = `${user.id}/translations/${doc.id}-${targetLang}-${baseName}.${ext}`;
+
+      // 3) Bytes UTF-8 (sin tocar tu otra lógica de uploads)
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(translatedText);
+      const contentType = isJson
+        ? 'application/json; charset=utf-8'
+        : 'text/plain; charset=utf-8';
+
+      // 4) Subir a Storage (mismo bucket `documents`)
+      const { error: upErr } = await supabase.storage
+        .from('documents')
+        .upload(objectName, bytes, {
+          contentType,
+          upsert: true, // si prefieres no sobrescribir, pon false
+        });
+      if (upErr) throw upErr;
+
+      // 5) Registrar en DB
+      const { data, error } = await supabase
+        .from('document_translations')
+        .insert({
+          doc_id: doc.id,
+          owner_id: user.id,
+          source_lang: 'auto',   // o guarda el que uses si lo detectas
+          target_lang: targetLang,
+          storage_path: objectName,
+          mime_type: isJson ? 'application/json' : 'text/plain',
+          size_bytes: bytes.length,
+          status: 'ready',
+        })
+        .select('storage_path')
+        .single();
+      if (error) throw error;
+
+      setSavedPath(data.storage_path);
+      Alert.alert('Saved', 'Translated copy stored in your Library.');
+    } catch (e: any) {
+      Alert.alert('Save error', e?.message ?? 'Could not save the translation');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+
   return (
     <SafeAreaView edges={['top','left','right']} style={s.safe}>
       {/* Header propio */}
@@ -104,13 +370,34 @@ export default function DocumentViewer() {
             {doc?.mime_type ?? 'Unknown'} · {new Date(doc?.created_at ?? Date.now()).toLocaleDateString()}
           </Text>
         </View>
-        {/* Botón placeholder para "Translate" (próximo paso) */}
-        <TouchableOpacity style={s.translateBtn} onPress={() => Alert.alert('Coming soon', 'Translate UI goes here')}>
-          <Text style={s.translateBtnText}>Translate</Text>
+
+        {/* Selector de idioma (chip) */}
+        <TouchableOpacity style={s.langBtn} onPress={() => setShowLangPicker(true)} disabled={translating}>
+          <Text style={s.langBtnText}>{(targetLang || 'en').toUpperCase()}</Text>
+        </TouchableOpacity>
+
+        {/* Botón Translate */}
+        <TouchableOpacity style={s.translateBtn} onPress={onPressTranslate} disabled={translating}>
+          <Text style={s.translateBtnText}>
+            {translating
+              ? 'Translating…'
+              : translatedText && translatedForLang === targetLang
+                ? 'View'
+                : 'Translate'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Botón Guardar copia */}
+        <TouchableOpacity
+          style={[s.translateBtn, { marginLeft: 10, backgroundColor: colors.primary }]}
+          onPress={saveTranslatedCopy}
+          disabled={saving || !translatedText}
+        >
+          <Text style={s.translateBtnText}>{saving ? 'Saving…' : 'Save copy'}</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Contenido */}
+      {/* Contenido original */}
       <View style={s.content}>
         {loading && (
           <View style={s.center}>
@@ -120,7 +407,6 @@ export default function DocumentViewer() {
         )}
 
         {!loading && signedUrl && isPDF && (
-          // PDF dentro de la app (WebView). Luego podemos integrar PDF.js personalizado.
           <WebView
             source={{ uri: signedUrl }}
             style={{ flex: 1, backgroundColor: colors.bg }}
@@ -157,8 +443,156 @@ export default function DocumentViewer() {
           </View>
         )}
       </View>
+
+      {/* Modal selector de idioma */}
+      <Modal visible={showLangPicker} transparent animationType="fade" onRequestClose={() => setShowLangPicker(false)}>
+        <TouchableOpacity activeOpacity={1} onPress={() => setShowLangPicker(false)} style={s.modalBackdrop}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>Target language</Text>
+            {LANGS.map((l) => (
+              <TouchableOpacity
+                key={l.code}
+                style={[s.langItem, l.code === targetLang && { borderColor: colors.accent }]}
+                onPress={() => { setTargetLang(l.code); setShowLangPicker(false); }}
+              >
+                <Text style={s.langCode}>{l.code.toUpperCase()}</Text>
+                <Text style={s.langName}>{l.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* 🔶 Modal overlay de TRADUCCIÓN */}
+      <Modal visible={overlayOpen} transparent animationType="fade" onRequestClose={() => setOverlayOpen(false)}>
+        <View style={s.overlayBackdrop}>
+          <View style={s.overlayCard}>
+            <View style={s.overlayHeader}>
+              <Text style={s.overlayTitle}>
+                Translation — {targetLang.toUpperCase()}
+              </Text>
+              <TouchableOpacity style={s.overlayClose} onPress={() => setOverlayOpen(false)}>
+                <Text style={s.overlayCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={s.scrollPad} style={{ flex: 1 }}>
+              <Text style={s.code}>
+                {translatedText ?? '(No translation yet)'}
+              </Text>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+      {/* 🆕 WebView oculto para extraer PDF (no interfiere con tu UI) */}
+      {mountPdfWV && !!pdfExtractHTML && (
+        <WebView
+          source={{ html: pdfExtractHTML }}
+          originWhitelist={['*']}
+          onMessage={onPdfWVMessage}
+          javaScriptEnabled
+          style={{ width: 0, height: 0, opacity: 0 }}
+        />
+      )}
     </SafeAreaView>
   );
+}
+
+// 🔧 Helper interno para traducir por chunks usando LT_URL y LT_API_KEY del .env
+// 🔧 Reemplazo drop-in de ltTranslate con chunking robusto y soporte JSON
+async function ltTranslate({
+  text, to, from = 'auto',
+}: { text: string; to: string; from?: string }) {
+  const base = process.env.EXPO_PUBLIC_LT_URL!;
+  const apiKey = process.env.EXPO_PUBLIC_LT_API_KEY!;
+  if (!base || !apiKey) {
+    throw new Error('Missing LT URL or API key. Set EXPO_PUBLIC_LT_URL and EXPO_PUBLIC_LT_API_KEY');
+  }
+
+  // 1) Si parece JSON, lo “pretty-print” para introducir saltos de línea y facilitar el chunking
+  const normalized = normalizeTextForChunks(text);
+
+  // 2) Troceo robusto (doble \n → \n → cortes duros por longitud)
+  const chunks = smartChunks(normalized, 1200);
+
+  const out: string[] = [];
+  for (const c of chunks) {
+    if (!c.trim()) continue;
+    const body = new URLSearchParams();
+    body.set('q', c);
+    body.set('source', from);
+    body.set('target', to);
+    body.set('format', 'text'); // para JSON plano también usamos 'text'
+    body.set('api_key', apiKey);
+
+    const r = await fetch(`${base}/translate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+    if (!r.ok) {
+      const msg = await r.text().catch(() => '');
+      throw new Error(`LibreTranslate ${r.status} ${msg}`);
+    }
+    const data = await r.json();
+    out.push(data?.translatedText ?? '');
+  }
+  return out.join('\n\n');
+}
+
+// Detecta JSON y lo formatea con indentación si es posible.
+function normalizeTextForChunks(input: string): string {
+  const trimmed = String(input ?? '').trim();
+  if (!trimmed) return '';
+  try {
+    const looksJson =
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'));
+    if (looksJson) {
+      const obj = JSON.parse(trimmed);
+      return JSON.stringify(obj, null, 2); // inserta saltos de línea
+    }
+  } catch {
+    // si no parsea, seguimos con el texto tal cual
+  }
+  return trimmed;
+}
+
+// Parte por párrafos dobles, luego por líneas, y si aún excede, corta por longitud fija.
+function smartChunks(input: string, max = 1200): string[] {
+  const first = input.split(/\n{2,}/g);
+  const chunks: string[] = [];
+  for (const block of first) {
+    if (block.length <= max) { chunks.push(block); continue; }
+
+    // dividir por líneas
+    const lines = block.split(/\n/g);
+    let box = '';
+    for (const ln of lines) {
+      const cand = box ? box + '\n' + ln : ln;
+      if (cand.length > max) {
+        if (box) chunks.push(box);
+        if (ln.length > max) {
+          // corte duro dentro de la línea
+          chunks.push(...chunkByLength(ln, max));
+          box = '';
+        } else {
+          box = ln;
+        }
+      } else {
+        box = cand;
+      }
+    }
+    if (box) chunks.push(box);
+  }
+  return chunks;
+}
+
+function chunkByLength(s: string, max: number): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < s.length; i += max) {
+    out.push(s.slice(i, i + max));
+  }
+  return out;
 }
 
 const styles = (c: typeof colors) => StyleSheet.create({
@@ -180,6 +614,17 @@ const styles = (c: typeof colors) => StyleSheet.create({
   backIcon: { color: c.text, fontSize: 28, lineHeight: 28, marginTop: -2 },
   headerTitle: { color: c.text, fontSize: 18, fontWeight: '800' },
   headerSub: { color: c.textMuted, fontSize: 12, marginTop: 2 },
+
+  // chip de idioma
+  langBtn: {
+    backgroundColor: c.card,
+    borderColor: c.border,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  langBtnText: { color: c.text, fontWeight: '800', letterSpacing: 0.5 },
 
   translateBtn: {
     backgroundColor: c.accent,
@@ -204,4 +649,63 @@ const styles = (c: typeof colors) => StyleSheet.create({
     borderRadius: 12,
     padding: 12,
   },
+
+  // Modal idiomas
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    backgroundColor: c.card,
+    borderColor: c.border,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+  },
+  modalTitle: { color: c.text, fontSize: 16, fontWeight: '800', marginBottom: 10 },
+  langItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    borderBottomColor: c.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  langCode: { color: c.text, fontWeight: '800', width: 48 },
+  langName: { color: c.textMuted, flex: 1 },
+
+  // Overlay traducción
+  overlayBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.50)',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  overlayCard: {
+    backgroundColor: c.surface,
+    borderColor: c.border,
+    borderWidth: 1,
+    borderRadius: 18,
+    minHeight: '45%',
+    maxHeight: '85%',
+    overflow: 'hidden',
+  },
+  overlayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomColor: c.border,
+    borderBottomWidth: 1,
+    backgroundColor: c.bg,
+  },
+  overlayTitle: { color: c.text, fontSize: 16, fontWeight: '800', flex: 1 },
+  overlayClose: {
+    width: 36, height: 36, borderRadius: 18,
+    borderWidth: 1, borderColor: c.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  overlayCloseText: { color: c.text, fontSize: 16 },
 });
