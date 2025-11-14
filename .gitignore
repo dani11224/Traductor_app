@@ -37,3 +37,7 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+Traductor_ap
+#pdf_tools
+__pycache__
+cf.log
