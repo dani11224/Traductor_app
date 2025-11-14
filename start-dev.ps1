@@ -52,5 +52,10 @@ Set-Content -Path $envPath -Value $lines -Encoding UTF8
 Write-Host "Tunnel URL: $publicUrl" -ForegroundColor Cyan
 Write-Host "Starting Expo (cache clear)..." -ForegroundColor Green
 
-npx expo start -c
-
+Push-Location $root
+try {
+  npx expo start -c
+}
+finally {
+  Pop-Location
+}
