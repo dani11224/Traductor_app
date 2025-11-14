@@ -141,7 +141,7 @@ def extract_layout(pdf_path: str, document_id: str | None = None) -> Dict[str, A
 
     doc.close()
 
-    print(f"✅ Extraídas {len(pages_data)} páginas, {total_blocks} bloques, {total_chars} caracteres.")
+    print(f"Extraidas {len(pages_data)} paginas, {total_blocks} bloques, {total_chars} caracteres.")
     return {
         "documentId": document_id,
         "pages": pages_data,

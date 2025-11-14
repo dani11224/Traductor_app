@@ -41,3 +41,6 @@ Traductor_ap
 #pdf_tools
 __pycache__
 cf.log
+uvicorn.out.log
+uvicorn.err.log
+

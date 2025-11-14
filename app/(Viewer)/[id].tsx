@@ -28,15 +28,7 @@ type DocRow = {
 const LANGS: { code: string; name: string }[] = [
   { code: 'en', name: 'English' },
   { code: 'es', name: 'Español' },
-  { code: 'fr', name: 'Français' },
-  { code: 'de', name: 'Deutsch' },
-  { code: 'pt', name: 'Português' },
-  { code: 'it', name: 'Italiano' },
   { code: 'ja', name: '日本語' },
-  { code: 'ko', name: '한국어' },
-  { code: 'zh', name: '中文' },
-  { code: 'ar', name: 'العربية' },
-  { code: 'ru', name: 'Русский' },
 ];
 
 export default function DocumentViewer() {
@@ -68,7 +60,14 @@ export default function DocumentViewer() {
   const [pdfPendingTarget, setPdfPendingTarget] = useState<string | null>(null);
   const [pdfAutoOpenOverlay, setPdfAutoOpenOverlay] = useState<boolean>(true);
 
+  // 🆕 PDF: traducción
+  const [pdfTranslating, setPdfTranslating] = useState(false);
+  const [translatedPdfUrl, setTranslatedPdfUrl] = useState<string | null>(null);
+  const [showTranslatedPdf, setShowTranslatedPdf] = useState(false);
+
   const s = useMemo(() => styles(colors), []);
+  const PDF_BACKEND_URL = process.env.EXPO_PUBLIC_PDF_BACKEND_URL || "";
+  console.log('PDF_BACKEND_URL', PDF_BACKEND_URL);
 
   useEffect(() => {
     (async () => {
@@ -173,6 +172,40 @@ const pdfExtractHTML = useMemo(() => {
 </body>
 </html>`;
 }, [signedUrl]);
+
+  const openTranslatedPdf = async () => {
+    try {
+      if (!isPDF || !signedUrl) {
+        Alert.alert("PDF", "No PDF available to translate.");
+        return;
+      }
+      if (!PDF_BACKEND_URL) {
+        Alert.alert("Config", "Missing EXPO_PUBLIC_PDF_BACKEND_URL");
+        return;
+      }
+
+      setPdfTranslating(true);
+
+      const url =
+        `${PDF_BACKEND_URL}/pdf-translate-direct` +
+        `?source_url=${encodeURIComponent(signedUrl)}` +
+        `&source_lang=${encodeURIComponent("es")}` +          // ajusta si el original no siempre es español
+        `&target_lang=${encodeURIComponent(targetLang)}`;
+
+      console.log('signedUrl', signedUrl);
+      console.log('targetLang', targetLang);
+      console.log('translatedPdfUrl', url);  
+
+      // No hace falta fetchear nada aquí: el WebView va directo a esa URL.
+      setTranslatedPdfUrl(url);
+      setShowTranslatedPdf(true);
+    } catch (e: any) {
+      Alert.alert("PDF translate", e?.message ?? "Failed to open translated PDF");
+    } finally {
+      setPdfTranslating(false);
+    }
+  };
+
 
   // 👉 handler del botón Translate: traduce si hace falta y abre el overlay
   const onPressTranslate = async () => {
@@ -397,6 +430,23 @@ const translatePdfNow = async (opts?: { to?: string; autoOpenOverlay?: boolean }
         </TouchableOpacity>
       </View>
 
+      {/* Botón Translate PDF (solo si es PDF) */}
+      {isPDF && (
+        <TouchableOpacity
+          style={[s.translateBtn, { marginLeft: 8, backgroundColor: colors.accent }]}
+          onPress={openTranslatedPdf}
+          disabled={pdfTranslating}
+        >
+          <Text style={s.translateBtnText}>
+            {pdfTranslating
+              ? "PDF…"
+              : translatedPdfUrl
+              ? "Regen PDF"
+              : "PDF Translate"}
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {/* Contenido original */}
       <View style={s.content}>
         {loading && (
@@ -406,15 +456,39 @@ const translatePdfNow = async (opts?: { to?: string; autoOpenOverlay?: boolean }
           </View>
         )}
 
-        {!loading && signedUrl && isPDF && (
-          <WebView
-            source={{ uri: signedUrl }}
-            style={{ flex: 1, backgroundColor: colors.bg }}
-            allowFileAccess
-            allowUniversalAccessFromFileURLs
-            originWhitelist={['*']}
-          />
+        {!loading && isPDF && signedUrl && (
+          <>
+            {/* Pequeño toggle Original / Translated cuando haya PDF traducido */}
+            {translatedPdfUrl && (
+              <View style={{ flexDirection: "row", justifyContent: "center", paddingVertical: 4 }}>
+                <TouchableOpacity onPress={() => setShowTranslatedPdf(false)} style={{ marginHorizontal: 8 }}>
+                  <Text style={[s.muted, !showTranslatedPdf && { color: colors.accent }]}>
+                    Original
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowTranslatedPdf(true)} style={{ marginHorizontal: 8 }}>
+                  <Text style={[s.muted, showTranslatedPdf && { color: colors.accent }]}>
+                    Translated
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <WebView
+              source={{
+                uri:
+                  showTranslatedPdf && translatedPdfUrl
+                    ? translatedPdfUrl
+                    : signedUrl,
+              }}
+              style={{ flex: 1, backgroundColor: colors.bg }}
+              allowFileAccess
+              allowUniversalAccessFromFileURLs
+              originWhitelist={["*"]}
+            />
+          </>
         )}
+
 
         {!loading && signedUrl && isImage && (
           <ScrollView contentContainerStyle={s.scrollPad} style={{ flex: 1 }}>
@@ -491,6 +565,9 @@ const translatePdfNow = async (opts?: { to?: string; autoOpenOverlay?: boolean }
           onMessage={onPdfWVMessage}
           javaScriptEnabled
           style={{ width: 0, height: 0, opacity: 0 }}
+          onError={(e) => console.log('WebView error', e.nativeEvent)}
+          onLoadStart={() => console.log('WebView load start', { showTranslatedPdf, translatedPdfUrl, signedUrl })}
+          onLoadEnd={() => console.log('WebView load end', { showTranslatedPdf, translatedPdfUrl })}
         />
       )}
     </SafeAreaView>

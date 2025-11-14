@@ -103,8 +103,8 @@ def translate_layout_with_lt(
             b["translatedText"] = translated
             total_blocks += 1
 
-    print(f"✅ Bloques traducidos: {total_blocks}")
-    print(f"✅ Entradas únicas en caché: {len(cache)}")
+    print(f"Bloques traducidos: {total_blocks}")
+    print(f"Entradas unicas en cache: {len(cache)}")
     return layout
 
 

@@ -185,13 +185,14 @@ def export_translated_pdf_with_images(
     out_doc.save(output_path)
     out_doc.close()
     orig_doc.close()
-    print(f"✅ PDF traducido (con imágenes) guardado en: {output_path}")
+    print(f"PDF translated (with images) saved in: {output_path}")
 
 
 if __name__ == "__main__":
     import sys
 
     if len(sys.argv) < 4:
+        print("Usage: python pdf_translated_exporter_with_images.py <original.pdf> <layout_translated.json> <output.pdf>")
         print("Uso: python pdf_translated_exporter_with_images.py <original.pdf> <layout_translated.json> <output.pdf>")
         raise SystemExit(1)
 
