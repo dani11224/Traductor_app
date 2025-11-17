@@ -20,7 +20,9 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { useTheme, Palette } from '../theme/theme';
 
 async function uploadAvatarToSupabase(localUri: string): Promise<string> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) throw new Error('Not authenticated');
 
   const ext = localUri.split('.').pop() || 'jpg';
@@ -32,7 +34,7 @@ async function uploadAvatarToSupabase(localUri: string): Promise<string> {
   const body = base64ToArrayBuffer(base64);
 
   const { error } = await supabase.storage
-    .from('profile-assets') // crea este bucket en Supabase (o el nombre que prefieras)
+    .from('profile-assets')
     .upload(fileName, body, {
       contentType: `image/${ext}`,
       upsert: true,
@@ -54,7 +56,6 @@ export default function SettingsScreen() {
   const s = useMemo(() => styles(colors), [colors]);
   const [loading, setLoading] = useState(true);
 
-  // Por ahora solo estado local (luego lo conectas a Supabase / auth)
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
@@ -62,7 +63,9 @@ export default function SettingsScreen() {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
         setLoading(false);
         return;
@@ -70,7 +73,9 @@ export default function SettingsScreen() {
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('name, username, avatar_url, theme_mode, profile_theme_id, space_config')
+        .select(
+          'name, username, avatar_url, theme_mode, profile_theme_id, space_config',
+        )
         .eq('id', user.id)
         .single();
 
@@ -79,7 +84,6 @@ export default function SettingsScreen() {
         setUsername(data.username ?? '');
         if (data.avatar_url) setAvatarUri(data.avatar_url);
 
-        // Sincronizar theme_mode ('dark' | 'light') con isDark (boolean)
         if (data.theme_mode === 'dark') {
           setIsDark(true);
         } else if (data.theme_mode === 'light') {
@@ -91,48 +95,43 @@ export default function SettingsScreen() {
     })();
   }, [setIsDark]);
 
-    const saveSettings = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+  const saveSettings = async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
 
-        const updates = {
-          name: name,
-          username,
-          // avatar_url se actualiza cuando subas la imagen (abajo)
-          updated_at: new Date().toISOString(),
-        };
+      const updates = {
+        name: name,
+        username,
+        updated_at: new Date().toISOString(),
+      };
 
-        const { error } = await supabase
-          .from('profiles')
-          .update(updates)
-          .eq('id', user.id);
+      const { error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id);
 
-        if (error) throw error;
-        Alert.alert('Saved', 'Settings updated');
-      } catch (e: any) {
-        Alert.alert('Error', e.message ?? 'Could not save settings');
-      }
-    };
-
+      if (error) throw error;
+      Alert.alert('Saved', 'Settings updated');
+    } catch (e: any) {
+      Alert.alert('Error', e.message ?? 'Could not save settings');
+    }
+  };
 
   const openAvatarPicker = () => {
-    Alert.alert(
-      'Profile picture',
-      'Choose an option',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Gallery',
-          onPress: pickFromGallery,
-        },
-        {
-          text: 'Camera',
-          onPress: takePhoto,
-        },
-      ],
-      { cancelable: true },
-    );
+    Alert.alert('Profile picture', 'Choose an option', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Gallery',
+        onPress: pickFromGallery,
+      },
+      {
+        text: 'Camera',
+        onPress: takePhoto,
+      },
+    ]);
   };
 
   const pickFromGallery = async () => {
@@ -145,7 +144,7 @@ export default function SettingsScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
-      aspect: [1, 1], // cuadrado tipo avatar
+      aspect: [1, 1],
       quality: 0.9,
     });
 
@@ -155,9 +154,14 @@ export default function SettingsScreen() {
         const publicUrl = await uploadAvatarToSupabase(localUri);
         setAvatarUri(publicUrl);
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) {
-          Alert.alert('Not authenticated', 'Please sign in to update your profile.');
+          Alert.alert(
+            'Not authenticated',
+            'Please sign in to update your profile.',
+          );
           return;
         }
         await supabase
@@ -190,9 +194,14 @@ export default function SettingsScreen() {
         const publicUrl = await uploadAvatarToSupabase(localUri);
         setAvatarUri(publicUrl);
 
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) {
-          Alert.alert('Not authenticated', 'Please sign in to update your profile.');
+          Alert.alert(
+            'Not authenticated',
+            'Please sign in to update your profile.',
+          );
           return;
         }
         await supabase
@@ -206,14 +215,14 @@ export default function SettingsScreen() {
   };
 
   const handleToggleTheme = async (nextValue: boolean) => {
-    // 1) Cambiar el theme inmediatamente en la UI
     setIsDark(nextValue);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 2) Guardar preferencia en Supabase
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -224,17 +233,42 @@ export default function SettingsScreen() {
 
       if (error) {
         console.log('Error updating theme_mode =>', error);
-        // Si quieres, puedes revertir el estado o mostrar un Alert:
-        // setIsDark(!nextValue);
-        // Alert.alert('Error', 'Could not save theme preference');
       }
     } catch (e) {
       console.log('Error updating theme_mode =>', e);
-      // setIsDark(!nextValue);
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      // Ajusta la ruta si tu login vive en otro path
+      router.replace('../(Auth)/Login');
+    } catch (e: any) {
+      Alert.alert('Logout error', e.message ?? 'Could not log out');
+    }
+  };
 
+  const openHelpCenter = () => {
+    Alert.alert(
+      'Help Center',
+      'Here you could open a help page, FAQ or an external link.',
+    );
+  };
+
+  const openReportProblem = () => {
+    Alert.alert(
+      'Report a problem',
+      'Here you could open a form or send an email with the issue.',
+    );
+  };
+
+  const openContactUs = () => {
+    Alert.alert(
+      'Contact us',
+      'Here you could show contact options or open a mailto link.',
+    );
+  };
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={s.safe}>
@@ -312,6 +346,53 @@ export default function SettingsScreen() {
               trackColor={{ false: '#4b5563', true: colors.primary }}
             />
           </View>
+
+          {/* Support */}
+          <View style={s.divider} />
+
+          <Text style={s.sectionLabel}>Support</Text>
+
+          <TouchableOpacity style={s.linkRow} onPress={openHelpCenter}>
+            <Text style={s.linkText}>Help Center</Text>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={colors.accent}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={s.linkRow} onPress={openReportProblem}>
+            <Text style={s.linkText}>Report a Problem</Text>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={colors.accent}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={s.linkRow} onPress={openContactUs}>
+            <Text style={s.linkText}>Contact Us</Text>
+            <Ionicons
+              name="chevron-forward"
+              size={18}
+              color={colors.accent}
+            />
+          </TouchableOpacity>
+
+          {/* Account / Logout */}
+          <View style={s.divider} />
+
+          <Text style={s.sectionLabel}>Account</Text>
+
+          <TouchableOpacity style={s.logoutRow} onPress={handleLogout}>
+            <Ionicons
+              name="log-out-outline"
+              size={20}
+              color="#f97373" // rojo suave
+              style={{ marginRight: 8 }}
+            />
+            <Text style={s.logoutText}>Log out</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </SafeAreaView>
@@ -425,5 +506,29 @@ const styles = (c: Palette) =>
       color: c.textMuted,
       fontSize: 12,
       marginTop: 2,
+    },
+
+    // Support links
+    linkRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 10,
+    },
+    linkText: {
+      color: c.text,
+      fontSize: 14,
+    },
+
+    // Logout
+    logoutRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 10,
+    },
+    logoutText: {
+      color: '#f97373',
+      fontSize: 14,
+      fontWeight: '600',
     },
   });

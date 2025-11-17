@@ -264,7 +264,16 @@ export default function LibraryScreen() {
 
             <Text style={s.headerTitle}>My Library</Text>
 
-            <TouchableOpacity style={s.iconBtn}>
+            { /* 🔍 Icono de búsqueda para my library*/}
+            <TouchableOpacity
+              style={s.iconBtn}
+              onPress={() =>
+                router.push({
+                  pathname: 'screens/search',
+                  params: { origin: 'library' },
+                })
+              }
+            >
               <Ionicons name="search" size={22} color={colors.text} />
             </TouchableOpacity>
           </View>

@@ -139,9 +139,16 @@ export default function HomeScreen() {
 
             <Text style={s.headerTitle}>Home</Text>
 
-            {/* 🔍 Reemplazo de Sign Up / Log In por icono de búsqueda */}
+            {/* 🔍 Screen de busqueda para home */}
             <View style={s.headerRight}>
-              <TouchableOpacity>
+              <TouchableOpacity
+                onPress={() =>
+                  router.push({
+                    pathname: 'screens/search',
+                    params: { origin: 'home' },
+                  })
+                }
+              >
                 <Ionicons name="search" size={22} color={colors.text} />
               </TouchableOpacity>
             </View>
