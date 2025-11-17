@@ -16,29 +16,7 @@ import * as FileSystem from 'expo-file-system';
 import { supabase } from '../../src/lib/supabase';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-
-/** 🎨 Paleta (misma del Login/Register) */
-type Palette = {
-  bg: string; surface: string; card: string;
-  primary: string; accent: string; onPrimary: string;
-  text: string; textMuted: string; border: string;
-  success: string; warning: string; error: string; highlight: string;
-};
-const colors: Palette = {
-  bg: '#0E1218',
-  surface: '#121723',
-  card: '#161B2A',
-  primary: '#A5B4FC',
-  accent: '#7ADCC4',
-  onPrimary: '#0B0F14',
-  text: '#E6EDF6',
-  textMuted: '#A6B3C2',
-  border: '#263243',
-  success: '#79E2B5',
-  warning: '#FFD58A',
-  error: '#FF9CA1',
-  highlight: '#FDE68A22',
-};
+import { useTheme, Palette } from '../theme/theme';
 
 type DocRow = {
   id: string;
@@ -62,7 +40,8 @@ export default function LibraryScreen() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
 
-  const s = useMemo(() => styles(colors), []);
+  const { colors } = useTheme();
+  const s = useMemo(() => styles(colors), [colors]);
 
   const loadDocs = useCallback(async () => {
     setLoading(true);

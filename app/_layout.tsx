@@ -5,6 +5,8 @@ import { AppState, ActivityIndicator, View, Text } from 'react-native';
 import { supabase } from '../src/lib/supabase';           // ajusta si tu cliente está en src (ver nota abajo)
 import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
 import { PageTurnProvider } from '../src/components/transitions/PageTurnOverlay';
+import { ThemeProvider } from './theme/theme';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 function AuthGate() {
   const { user, loading } = useAuth();
@@ -58,10 +60,14 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <PageTurnProvider>
-      <AuthProvider>
-        <AuthGate />
-      </AuthProvider>
-    </PageTurnProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider>
+        <PageTurnProvider>
+          <AuthProvider>
+            <AuthGate />
+          </AuthProvider>
+        </PageTurnProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
