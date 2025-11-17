@@ -17,11 +17,12 @@ export type SpaceBlock = {
   description: string; // Subtítulo / ayuda
   value: string;       // Contenido que escribe el usuario
 
+  accentColor?: string;
+  accentTextColor?: string;
+
   //Author
   authorName?: string;
   themeId?: string;
-  accentColor?: string;
-  accentTextColor?: string;
 
   //Book
   bookTitle?: string;

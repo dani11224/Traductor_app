@@ -1,8 +1,10 @@
 // app/main/(Tabs)/profile.tsx
+import { supabase } from '../../src/lib/supabase';
 import React, {
   useMemo,
   useState,
   useCallback,
+  useEffect,
 } from 'react';
 import {
   Image,
@@ -12,16 +14,20 @@ import {
   TouchableOpacity,
   ScrollView,
   Platform,
+  Alert,
 } from 'react-native';
 import DraggableFlatList, {
   RenderItemParams,
 } from 'react-native-draggable-flatlist';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTheme, Palette } from '../theme/theme';
 import { AddOption, SpaceBlock } from '../types/space';
+import * as FileSystem from 'expo-file-system/legacy';
+import { base64ToArrayBuffer } from '../(Tabs)/library';
 import  AddBlockModal  from '@/components/profile/AddBlockModal';
 import EditBlockModal from '@/components/profile/EditBlockModal';
 import AuthorBlockModal from '@/components/profile/AuthorBlockModal';
@@ -47,7 +53,43 @@ const BASE_PROFILE_BG_THEMES: ProfileBgTheme[] = [
   { id: 'slate', name: 'Slate', top: '#020617', bottom: '#111827' },
 ];
 
+async function uploadSpaceImage(localUri: string): Promise<string> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const ext = localUri.split('.').pop() || 'jpg';
+  const fileName = `space-images/${user.id}-${Date.now()}.${ext}`;
+
+  const base64 = await FileSystem.readAsStringAsync(localUri, {
+    encoding: 'base64',
+  });
+  const body = base64ToArrayBuffer(base64);
+
+  const { error } = await supabase.storage
+    .from('profile-assets') // mismo bucket que antes, o otro 'space-assets'
+    .upload(fileName, body, {
+      contentType: `image/${ext}`,
+      upsert: true,
+    });
+
+  if (error)  throw error;
+
+  const { data } = supabase.storage
+    .from('profile-assets')
+    .getPublicUrl(fileName);
+
+  return data.publicUrl;
+}
+
+
 export default function ProfileScreen() {
+
+  // 👤 datos del usuario
+  const [profileName, setProfileName] = useState('');
+  const [profileUsername, setProfileUsername] = useState('');
+  const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
+
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
   const router = useRouter();
   const { colors } = useTheme();
@@ -63,6 +105,8 @@ export default function ProfileScreen() {
   // tema de fondo del profile
   const [profileBgThemeId, setProfileBgThemeId] =
     useState<string>('system');
+
+  const [loadingSpace, setLoadingSpace] = useState(true);
 
 
   const [themeModalVisible, setThemeModalVisible] = useState(false);
@@ -83,10 +127,7 @@ export default function ProfileScreen() {
     return found ?? themeOptions[0]; // fallback
   }, [themeOptions, profileBgThemeId]);
 
-  const handleSelectProfileTheme = useCallback((id: string) => {
-    setProfileBgThemeId(id);
-    setThemeModalVisible(false);
-  }, []);
+  
 
   // modal de agregar
   const [addVisible, setAddVisible] = useState(false);
@@ -129,6 +170,110 @@ export default function ProfileScreen() {
   const [textCardEditingBlock, setTextCardEditingBlock] =
     useState<SpaceBlock | null>(null);
 
+    const loadProfile = useCallback(async () => {
+      try {
+        setLoadingProfile(true);
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setLoadingProfile(false);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('name, username, avatar_url, profile_theme_id, space_config')
+          .eq('id', user.id)
+          .single();
+
+        if (!error && data) {
+          setProfileName(data.name ?? '');
+          setProfileUsername(data.username ?? '');
+          setProfileAvatar(data.avatar_url ?? null);
+
+          if (data.profile_theme_id) {
+            setProfileBgThemeId(data.profile_theme_id);
+          }
+
+          if (data.space_config) {
+            setSpaceBlocks(data.space_config as SpaceBlock[]);
+          }
+        }
+      } catch (e) {
+        console.log('loadProfile error', (e as any)?.message);
+      } finally {
+        setLoadingProfile(false);
+      }
+    }, []);
+
+    // 🔁 cargar al entrar por primera vez
+    useEffect(() => {
+      loadProfile();
+    }, [loadProfile]);
+
+    // 🔁 recargar cada vez que la tab de Profile gana foco
+    useFocusEffect(
+      useCallback(() => {
+        loadProfile();
+      }, [loadProfile]),
+    );
+
+  useEffect(() => {
+    (async () => {
+      setLoadingSpace(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoadingSpace(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('space_config, profile_theme_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!error && data) {
+        if (data.space_config) {
+          setSpaceBlocks(data.space_config as SpaceBlock[]);
+        }
+        if (data.profile_theme_id) {
+          setProfileBgThemeId(data.profile_theme_id);
+        }
+      }
+
+      setLoadingSpace(false);
+    })();
+  }, []);
+
+  const saveProfileSpace = useCallback(
+    async (nextBlocks: SpaceBlock[], nextThemeId: string) => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            space_config: nextBlocks,
+            profile_theme_id: nextThemeId,
+          })
+          .eq('id', user.id);
+
+        if (error) throw error;
+        // opcional: algún toast
+      } catch (e: any) {
+        console.log('saveProfileSpace error', e.message);
+      }
+    },
+    [],
+  );
+  
+  const handleSelectProfileTheme = useCallback((id: string) => {
+    setProfileBgThemeId(id);
+    setThemeModalVisible(false);
+    saveProfileSpace(spaceBlocks, id);
+  }, [spaceBlocks, saveProfileSpace]);
 
   const handleSelectOption = useCallback((option: AddOption) => {
     const newBlock: SpaceBlock = {
@@ -401,28 +546,46 @@ export default function ProfileScreen() {
 
   //Image Block
   const handleImageSave = useCallback(
-    (payload: {
-      uri: string | null;
-      widthRatio: number;
-      height: number;
-    }) => {
+    async (payload: { uri: string | null; widthRatio: number; height: number }) => {
       if (!imageEditingBlock) return;
-      setSpaceBlocks(prev =>
-        prev.map(b =>
+
+      try {
+        let finalUrl: string | null = imageEditingBlock.imageUri ?? null;
+
+        if (payload.uri) {
+          // si es nuevo file:// lo subimos
+          if (payload.uri.startsWith('file:') || payload.uri.startsWith('content:')) {
+            finalUrl = await uploadSpaceImage(payload.uri);
+          } else {
+            // ya es remota (por si viene de antes)
+            finalUrl = payload.uri;
+          }
+        } else {
+          finalUrl = null;
+        }
+
+        const updatedBlocks = spaceBlocks.map(b =>
           b.id === imageEditingBlock.id
             ? {
                 ...b,
-                imageUri: payload.uri,
+                imageUri: finalUrl,
                 imageWidthRatio: payload.widthRatio,
                 imageHeight: payload.height,
               }
             : b,
-        ),
-      );
-      setImageModalVisible(false);
-      setImageEditingBlock(null);
+        );
+
+        setSpaceBlocks(updatedBlocks);
+        setImageModalVisible(false);
+        setImageEditingBlock(null);
+
+        // guardar Space en Supabase también
+        await saveProfileSpace(updatedBlocks, profileBgThemeId);
+      } catch (e: any) {
+        Alert.alert('Image error', e.message ?? 'Could not save image');
+      }
     },
-    [imageEditingBlock],
+    [imageEditingBlock, spaceBlocks, profileBgThemeId, saveProfileSpace],
   );
 
   const handleImageLiveSize = useCallback(
@@ -755,7 +918,12 @@ export default function ProfileScreen() {
             <DraggableFlatList
               data={spaceBlocks}
               keyExtractor={(item) => item.id}
-              onDragEnd={({ data }) => setSpaceBlocks(data)}
+              onDragEnd={({ data }) => {
+                setSpaceBlocks(data);
+                // persist new order after drag ends
+                saveProfileSpace(data, profileBgThemeId);
+                setIsEditingLayout(prev => !prev);
+              }}
               renderItem={renderEditableItem}
               numColumns={2}
               activationDistance={4}
@@ -780,10 +948,18 @@ export default function ProfileScreen() {
             {/* Avatar + nombre */}
             <View style={s.center}>
                 <View style={s.avatar}>
-                <Ionicons name="person" size={42} color={colors.text} />
+                  {profileAvatar ? (
+                    <Image source={{ uri: profileAvatar }} style={s.avatarImg} />
+                  ) : (
+                    <Ionicons name="person" size={42} color={colors.text} />
+                  )}
                 </View>
-                <Text style={s.name}>User</Text>
-                <Text style={s.username}>@username</Text>
+                <Text style={s.name}>
+                  {profileName || 'Your name'}
+                </Text>
+                <Text style={s.username}>
+                  {profileUsername ? `@${profileUsername}` : '@username'}
+                </Text>
             </View>
 
             {/* Space pill (por ahora estático) */}
@@ -1042,6 +1218,11 @@ const styles = (c: Palette) =>
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: 10,
+    },
+    avatarImg: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 24,
     },
     name: {
       color: c.text,

@@ -1,5 +1,6 @@
 // app/screens/settings.tsx
-import React, { useMemo, useState } from 'react';
+import { supabase } from '../../src/lib/supabase';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,22 +11,110 @@ import {
   Image,
   Alert,
 } from 'react-native';
+import { base64ToArrayBuffer } from '../(Tabs)/library';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useTheme, Palette } from '../theme/theme';
+
+async function uploadAvatarToSupabase(localUri: string): Promise<string> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const ext = localUri.split('.').pop() || 'jpg';
+  const fileName = `avatars/${user.id}-${Date.now()}.${ext}`;
+
+  const base64 = await FileSystem.readAsStringAsync(localUri, {
+    encoding: 'base64',
+  });
+  const body = base64ToArrayBuffer(base64);
+
+  const { error } = await supabase.storage
+    .from('profile-assets') // crea este bucket en Supabase (o el nombre que prefieras)
+    .upload(fileName, body, {
+      contentType: `image/${ext}`,
+      upsert: true,
+    });
+
+  console.log('uploadAvatarToSupabase user =>', user?.id);
+  if (error) throw error;
+
+  const { data } = supabase.storage
+    .from('profile-assets')
+    .getPublicUrl(fileName);
+
+  return data.publicUrl;
+}
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { colors, isDark, setIsDark } = useTheme();
   const s = useMemo(() => styles(colors), [colors]);
+  const [loading, setLoading] = useState(true);
 
   // Por ahora solo estado local (luego lo conectas a Supabase / auth)
-  const [name, setName] = useState('User');
-  const [username, setUsername] = useState('username');
+  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('name, username, avatar_url, theme_mode, profile_theme_id, space_config')
+        .eq('id', user.id)
+        .single();
+
+      if (!error && data) {
+        setName(data.name ?? '');
+        setUsername(data.username ?? '');
+        if (data.avatar_url) setAvatarUri(data.avatar_url);
+
+        // Sincronizar theme_mode ('dark' | 'light') con isDark (boolean)
+        if (data.theme_mode === 'dark') {
+          setIsDark(true);
+        } else if (data.theme_mode === 'light') {
+          setIsDark(false);
+        }
+      }
+
+      setLoading(false);
+    })();
+  }, [setIsDark]);
+
+    const saveSettings = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const updates = {
+          name: name,
+          username,
+          // avatar_url se actualiza cuando subas la imagen (abajo)
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error } = await supabase
+          .from('profiles')
+          .update(updates)
+          .eq('id', user.id);
+
+        if (error) throw error;
+        Alert.alert('Saved', 'Settings updated');
+      } catch (e: any) {
+        Alert.alert('Error', e.message ?? 'Could not save settings');
+      }
+    };
+
 
   const openAvatarPicker = () => {
     Alert.alert(
@@ -54,17 +143,31 @@ export default function SettingsScreen() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1], // cuadrado tipo avatar
       quality: 0.9,
     });
 
     if (!result.canceled) {
-      const uri = result.assets[0].uri;
-      setAvatarUri(uri);
-      // TODO: subir a Supabase Storage y guardar en profiles.avatar_url
-      // await uploadAvatarToSupabase(uri);
+      const localUri = result.assets[0].uri;
+      try {
+        const publicUrl = await uploadAvatarToSupabase(localUri);
+        setAvatarUri(publicUrl);
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          Alert.alert('Not authenticated', 'Please sign in to update your profile.');
+          return;
+        }
+        await supabase
+          .from('profiles')
+          .update({ avatar_url: publicUrl })
+          .eq('id', user.id);
+      } catch (e: any) {
+        console.log('upload error =>', JSON.stringify(e, null, 2));
+        Alert.alert('Upload error', e.message ?? 'Could not upload avatar');
+      }
     }
   };
 
@@ -82,17 +185,56 @@ export default function SettingsScreen() {
     });
 
     if (!result.canceled) {
-      const uri = result.assets[0].uri;
-      setAvatarUri(uri);
-      // TODO: subir a Supabase Storage y guardar en profiles.avatar_url
-      // await uploadAvatarToSupabase(uri);
+      const localUri = result.assets[0].uri;
+      try {
+        const publicUrl = await uploadAvatarToSupabase(localUri);
+        setAvatarUri(publicUrl);
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          Alert.alert('Not authenticated', 'Please sign in to update your profile.');
+          return;
+        }
+        await supabase
+          .from('profiles')
+          .update({ avatar_url: publicUrl })
+          .eq('id', user.id);
+      } catch (e: any) {
+        Alert.alert('Upload error', e.message ?? 'Could not upload avatar');
+      }
     }
   };
 
-  const onSaveProfile = () => {
-    // aquí luego llamas a Supabase o a tu API
-    Alert.alert('Saved', 'Profile updated locally (connect to backend later).');
+  const handleToggleTheme = async (nextValue: boolean) => {
+    // 1) Cambiar el theme inmediatamente en la UI
+    setIsDark(nextValue);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // 2) Guardar preferencia en Supabase
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          theme_mode: nextValue ? 'dark' : 'light',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+
+      if (error) {
+        console.log('Error updating theme_mode =>', error);
+        // Si quieres, puedes revertir el estado o mostrar un Alert:
+        // setIsDark(!nextValue);
+        // Alert.alert('Error', 'Could not save theme preference');
+      }
+    } catch (e) {
+      console.log('Error updating theme_mode =>', e);
+      // setIsDark(!nextValue);
+    }
   };
+
+
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={s.safe}>
@@ -148,7 +290,7 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={s.saveBtn} onPress={onSaveProfile}>
+          <TouchableOpacity style={s.saveBtn} onPress={saveSettings}>
             <Text style={s.saveBtnText}>Save profile</Text>
           </TouchableOpacity>
 
@@ -165,7 +307,7 @@ export default function SettingsScreen() {
             </View>
             <Switch
               value={isDark}
-              onValueChange={(v) => setIsDark(v)}
+              onValueChange={handleToggleTheme}
               thumbColor={isDark ? colors.accent : '#f4f3f4'}
               trackColor={{ false: '#4b5563', true: colors.primary }}
             />
@@ -220,7 +362,7 @@ const styles = (c: Palette) =>
     avatar: {
       width: 72,
       height: 72,
-      borderRadius: 36,
+      borderRadius: 24,
       backgroundColor: c.card,
       alignItems: 'center',
       justifyContent: 'center',
@@ -230,7 +372,7 @@ const styles = (c: Palette) =>
     avatarImg: {
       width: '100%',
       height: '100%',
-      borderRadius: 36,
+      borderRadius: 24,
     },
     profileFields: {
       flex: 1,

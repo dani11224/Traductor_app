@@ -306,7 +306,7 @@ export default function LibraryScreen() {
 }
 
 /** Helper: Base64 → ArrayBuffer (fallback) */
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
+export function base64ToArrayBuffer(base64: string): ArrayBuffer {
   const chars =
     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
   let bufferLength = base64.length * 0.75;
