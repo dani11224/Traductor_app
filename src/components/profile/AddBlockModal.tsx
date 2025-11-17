@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, Palette } from '../../../app/theme/theme';
-import { AddOption } from '../../../app/types/space';
+import { AddOption, SpaceBlockType } from '../../../app/types/space';
 
 type Props = {
   visible: boolean;
@@ -211,5 +211,16 @@ const styles = (c: Palette) =>
       color: c.textMuted,
       fontSize: 12,
       marginTop: 2,
+    },
+    addBtn: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: c.primary,
+    },
+    addBtnText: {
+      color: c.onPrimary,
+      fontSize: 11,
+      fontWeight: '600',
     },
   });

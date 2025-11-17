@@ -99,15 +99,13 @@ export default function ProfileScreen() {
   // bloques del Space
   const [spaceBlocks, setSpaceBlocks] = useState<SpaceBlock[]>([]);
 
+
   // modo edición de layout
   const [isEditingLayout, setIsEditingLayout] = useState(false);
 
   // tema de fondo del profile
   const [profileBgThemeId, setProfileBgThemeId] =
     useState<string>('system');
-
-  const [loadingSpace, setLoadingSpace] = useState(true);
-
 
   const [themeModalVisible, setThemeModalVisible] = useState(false);
 
@@ -196,7 +194,12 @@ export default function ProfileScreen() {
           }
 
           if (data.space_config) {
-            setSpaceBlocks(data.space_config as SpaceBlock[]);
+            const raw: any = data.space_config;
+            if (Array.isArray(raw)) {
+              setSpaceBlocks(raw as SpaceBlock[]);
+            } else if (Array.isArray(raw?.blocks)) {
+              setSpaceBlocks(raw.blocks as SpaceBlock[]);
+            }
           }
         }
       } catch (e) {
@@ -218,33 +221,48 @@ export default function ProfileScreen() {
       }, [loadProfile]),
     );
 
-  useEffect(() => {
-    (async () => {
-      setLoadingSpace(true);
+  const persistSpace = useCallback(async (nextBlocks: SpaceBlock[]) => {
+    try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setLoadingSpace(false);
-        return;
-      }
+      if (!user) return;
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('profiles')
-        .select('space_config, profile_theme_id')
-        .eq('id', user.id)
-        .single();
+        .update({
+          space_config: nextBlocks,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
 
-      if (!error && data) {
-        if (data.space_config) {
-          setSpaceBlocks(data.space_config as SpaceBlock[]);
-        }
-        if (data.profile_theme_id) {
-          setProfileBgThemeId(data.profile_theme_id);
-        }
+      if (error) {
+        console.log('persistSpace error', error.message);
       }
-
-      setLoadingSpace(false);
-    })();
+    } catch (e: any) {
+      console.log('persistSpace exception', e.message);
+    }
   }, []);
+
+  // para cuando guardas desde EditBlockModal, TextCardModal, etc.
+  const handleUpdateBlock = (blockId: string, patch: Partial<SpaceBlock>) => {
+    setSpaceBlocks(prev => {
+      const next = prev.map(b =>
+        b.id === blockId ? { ...b, ...patch, data: { ...b.data, ...patch.data } } : b
+      );
+      void persistSpace(next);
+      return next;
+    });
+  };
+
+  // 🗑️ eliminación de blocks
+  const handleDeleteBlock = (blockId: string) => {
+    setSpaceBlocks(prev => {
+      const next = prev.filter(b => b.id !== blockId);
+      void persistSpace(next);
+      return next;
+    });
+
+    setEditingBlock(null); // por si estabas editando ese block
+  };
 
   const saveProfileSpace = useCallback(
     async (nextBlocks: SpaceBlock[], nextThemeId: string) => {
@@ -261,7 +279,6 @@ export default function ProfileScreen() {
           .eq('id', user.id);
 
         if (error) throw error;
-        // opcional: algún toast
       } catch (e: any) {
         console.log('saveProfileSpace error', e.message);
       }
@@ -275,76 +292,96 @@ export default function ProfileScreen() {
     saveProfileSpace(spaceBlocks, id);
   }, [spaceBlocks, saveProfileSpace]);
 
-  const handleSelectOption = useCallback((option: AddOption) => {
-    const newBlock: SpaceBlock = {
+  const handleSelectOption = useCallback(
+    (option: AddOption) => {
+      const base: SpaceBlock = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
         type: option.type,
         title: option.title,
         description: option.description,
         value: '',
-    };
-
-    if (option.type === 'spacer') {
-      const blockWithHeight: SpaceBlock = {
-        ...newBlock,
-        spacerHeight: 40,
       };
-      setSpaceBlocks(prev => [...prev, blockWithHeight]);
+
+      if (option.type === 'spacer') {
+        const blockWithHeight: SpaceBlock = {
+          ...base,
+          spacerHeight: 40,
+        };
+        setSpaceBlocks(prev => {
+          const next = [...prev, blockWithHeight];
+          void persistSpace(next);
+          return next;
+        });
+        setAddVisible(false);
+        setSpacerEditingBlock(blockWithHeight);
+        setSpacerModalVisible(true);
+        return;
+      }
+
+      if (option.type === 'image') {
+        const blockWithImage: SpaceBlock = {
+          ...base,
+          imageUri: null,
+          imageWidthRatio: 1,
+          imageHeight: 170,
+        };
+        setSpaceBlocks(prev => {
+          const next = [...prev, blockWithImage];
+          void persistSpace(next);
+          return next;
+        });
+        setAddVisible(false);
+        setImageEditingBlock(blockWithImage);
+        setImageModalVisible(true);
+        return;
+      }
+
+      if (option.type === 'text') {
+        const textCardBlock: SpaceBlock = {
+          ...base,
+          accentColor: colors.card,
+          accentTextColor: colors.text,
+        };
+        setSpaceBlocks(prev => {
+          const next = [...prev, textCardBlock];
+          void persistSpace(next);
+          return next;
+        });
+        setAddVisible(false);
+        setTextCardEditingBlock(textCardBlock);
+        setTextCardModalVisible(true);
+        return;
+      }
+
+      // author, book, quote, poem, header, etc.
+      setSpaceBlocks(prev => {
+        const next = [...prev, base];
+        void persistSpace(next);
+        return next;
+      });
       setAddVisible(false);
-      setSpacerEditingBlock(blockWithHeight);
-      setSpacerModalVisible(true);
-      return;
-    }
 
-    if (option.type === 'image') {
-      const baseBlock: SpaceBlock = {
-        ...newBlock,
-        imageUri: null,
-        imageWidthRatio: 1,
-        imageHeight: 170,
-      };
-      setSpaceBlocks(prev => [...prev, baseBlock]);
-      setAddVisible(false);
-      setImageEditingBlock(baseBlock);
-      setImageModalVisible(true);
-      return;
-    }
-
-    if (option.type === 'text') {
-      const baseBlock: SpaceBlock = {
-        ...newBlock,
-        accentColor: colors.card,
-        accentTextColor: colors.text,
-      };
-      setSpaceBlocks(prev => [...prev, baseBlock]);
-      setAddVisible(false);
-      setTextCardEditingBlock(baseBlock);
-      setTextCardModalVisible(true);
-      return;
-    }
-
-    setSpaceBlocks((prev) => [...prev, newBlock]);
-    setAddVisible(false);
-
-    if (option.type === 'author') {
-        setAuthorEditingBlock(newBlock);
+      if (option.type === 'author') {
+        setAuthorEditingBlock(base);
         setAuthorModalVisible(true);
-    } else if (option.type === 'book') {
-        setBookEditingBlock(newBlock);
+      } else if (option.type === 'book') {
+        setBookEditingBlock(base);
         setBookModalVisible(true);
-    } else if (option.type === 'quote' || option.type === 'poem') {
-        setTextEditingBlock(newBlock);
+      } else if (option.type === 'quote' || option.type === 'poem') {
+        setTextEditingBlock(base);
         setTextBlockMode(option.type);
         setTextBlockModalVisible(true);
-    }  else if (option.type === 'header') {
-        setSectionEditingBlock(newBlock);
+      } else if (option.type === 'header') {
+        setSectionEditingBlock(base);
         setSectionModalVisible(true);
-    } else {
-        setEditingBlock(newBlock);
+      } else {
+        setEditingBlock(base);
         setEditText('');
         setEditVisible(true);
-    }
-  }, [colors.card, colors.text]);
+      }
+    },
+    [colors.card, colors.text, persistSpace],
+  );
 
 
   const handleEditBlock = useCallback((block: SpaceBlock) => {
@@ -380,15 +417,17 @@ export default function ProfileScreen() {
 
   const handleSaveEdit = useCallback(() => {
     if (!editingBlock) return;
-    setSpaceBlocks((prev) =>
-      prev.map((b) =>
+    setSpaceBlocks(prev => {
+      const next = prev.map(b =>
         b.id === editingBlock.id ? { ...b, value: editText } : b,
-      ),
-    );
+      );
+      void persistSpace(next);
+      return next;
+    });
     setEditVisible(false);
     setEditingBlock(null);
     setEditText('');
-  }, [editText, editingBlock]);
+  }, [editText, editingBlock, persistSpace]);
 
   const handleCancelEdit = useCallback(() => {
     setEditVisible(false);
@@ -405,25 +444,27 @@ export default function ProfileScreen() {
     }) => {
         if (!authorEditingBlock) return;
 
-        setSpaceBlocks(prev =>
-        prev.map(b =>
+        setSpaceBlocks(prev => {
+          const next = prev.map(b =>
             b.id === authorEditingBlock.id
-            ? {
-                ...b,
-                value: payload.authorName,
-                authorName: payload.authorName,
-                themeId: payload.themeId,
-                accentColor: payload.accentColor,
-                accentTextColor: payload.accentTextColor,
+              ? {
+                  ...b,
+                  value: payload.authorName,
+                  authorName: payload.authorName,
+                  themeId: payload.themeId,
+                  accentColor: payload.accentColor,
+                  accentTextColor: payload.accentTextColor,
                 }
-            : b,
-        ),
-        );
+              : b,
+          );
+          void persistSpace(next);
+          return next;
+        });
 
         setAuthorModalVisible(false);
         setAuthorEditingBlock(null);
     },
-    [authorEditingBlock],
+    [authorEditingBlock, persistSpace],
   );
 
   // Book
@@ -436,25 +477,26 @@ export default function ProfileScreen() {
         accentTextColor: string;
     }) => {
         if (!bookEditingBlock) return;
-        setSpaceBlocks(prev =>
-        prev.map(b =>
+        setSpaceBlocks(prev => {
+          const next = prev.map(b =>
             b.id === bookEditingBlock.id
-            ? {
-                ...b,
-                value: payload.title,
-                bookTitle: payload.title,
-                bookAuthor: payload.author,
-                themeId: payload.themeId,
-                accentColor: payload.accentColor,
-                accentTextColor: payload.accentTextColor,
+              ? {
+                  ...b,
+                  value: payload.title,
+                  authorName: payload.author,
+                  themeId: payload.themeId,
+                  accentColor: payload.accentColor,
+                  accentTextColor: payload.accentTextColor,
                 }
-            : b,
-        ),
-        );
+              : b,
+          );
+          void persistSpace(next);
+          return next;
+        });
         setBookModalVisible(false);
         setBookEditingBlock(null);
     },
-    [bookEditingBlock],
+    [bookEditingBlock, persistSpace],
   );
 
   // Quote / Poem
@@ -467,24 +509,25 @@ export default function ProfileScreen() {
         textStyleId: string;
     }) => {
         if (!textEditingBlock) return;
-        setSpaceBlocks(prev =>
-        prev.map(b =>
+        setSpaceBlocks(prev => {
+          const next = prev.map(b =>
             b.id === textEditingBlock.id
-            ? {
-                ...b,
-                value: payload.text,
-                themeId: payload.themeId,
-                accentColor: payload.accentColor,
-                accentTextColor: payload.accentTextColor,
-                textStyleId: payload.textStyleId,
+              ? {
+                  ...b,
+                  value: payload.text,
+                  themeId: payload.themeId,
+                  accentColor: payload.accentColor,
+                  textStyleId: payload.textStyleId,
                 }
-            : b,
-        ),
-        );
+              : b,
+          );
+          void persistSpace(next);
+          return next;
+        });
         setTextBlockModalVisible(false);
         setTextEditingBlock(null);
     },
-    [textEditingBlock],
+    [textEditingBlock, persistSpace],
   );
 
   // Section Header
@@ -492,23 +535,25 @@ export default function ProfileScreen() {
     (payload: { text: string; bgColor: string; textColor: string }) => {
       if (!sectionEditingBlock) return;
 
-      setSpaceBlocks(prev =>
-        prev.map(b =>
-          b.id === sectionEditingBlock.id
-            ? {
-                ...b,
-                value: payload.text,
-                sectionBgColor: payload.bgColor,
-                sectionTextColor: payload.textColor,
-              }
-            : b,
-        ),
-      );
+      setSpaceBlocks(prev => {
+          const next = prev.map(b =>
+            b.id === sectionEditingBlock.id
+              ? {
+                  ...b,
+                  value: payload.text,
+                  sectionBgColor: payload.bgColor,
+                  sectionTextColor: payload.textColor,
+                }
+              : b,
+          );
+          void persistSpace(next);
+          return next;
+        });
 
       setSectionModalVisible(false);
       setSectionEditingBlock(null);
     },
-    [sectionEditingBlock],
+    [sectionEditingBlock, persistSpace],
   );
 
   // Spacer
@@ -516,18 +561,22 @@ export default function ProfileScreen() {
     (payload: { height: number }) => {
       if (!spacerEditingBlock) return;
 
-      setSpaceBlocks(prev =>
-        prev.map(b =>
-          b.id === spacerEditingBlock.id
-            ? { ...b, spacerHeight: payload.height }
-            : b,
-        ),
-      );
+      setSpaceBlocks(prev => {
+          const next = prev.map(b =>
+            b.id === spacerEditingBlock.id
+              ? {...b,
+                  spacerHeight: payload.height
+                }
+              : b,
+          );
+          void persistSpace(next);
+          return next;
+        });
 
       setSpacerModalVisible(false);
       setSpacerEditingBlock(null);
     },
-    [spacerEditingBlock],
+    [spacerEditingBlock, persistSpace],
   );
 
   const handleSpacerLiveUpdate = useCallback(
@@ -585,7 +634,7 @@ export default function ProfileScreen() {
         Alert.alert('Image error', e.message ?? 'Could not save image');
       }
     },
-    [imageEditingBlock, spaceBlocks, profileBgThemeId, saveProfileSpace],
+    [imageEditingBlock, spaceBlocks, persistSpace],
   );
 
   const handleImageLiveSize = useCallback(
@@ -610,18 +659,20 @@ export default function ProfileScreen() {
   const handleTextCardSave = useCallback(
     (payload: { text: string; bgColor: string; textColor: string }) => {
       if (!textCardEditingBlock) return;
-      setSpaceBlocks(prev =>
-        prev.map(b =>
-          b.id === textCardEditingBlock.id
-            ? {
-                ...b,
-                value: payload.text,
-                accentColor: payload.bgColor,
-                accentTextColor: payload.textColor,
-              }
-            : b,
-        ),
-      );
+      setSpaceBlocks(prev => {
+          const next = prev.map(b =>
+            b.id === textCardEditingBlock.id
+              ? {
+                  ...b,
+                  value: payload.text,
+                  accentColor: payload.bgColor,
+                  accentTextColor: payload.textColor,
+                }
+              : b,
+          );
+          void persistSpace(next);
+          return next;
+        });
       setTextCardModalVisible(false);
       setTextCardEditingBlock(null);
     },
@@ -808,7 +859,7 @@ export default function ProfileScreen() {
     );
   };
 
-  const renderEditableItem = useCallback(
+    const renderEditableItem = useCallback(
     ({ item, drag, isActive }: RenderItemParams<SpaceBlock>) => {
       const bg = item.accentColor || colors.card;
       const txt = item.accentTextColor || colors.text;
@@ -831,6 +882,15 @@ export default function ProfileScreen() {
               <View style={[s.handleDot, { bottom: 6, left: 6 }]} />
               <View style={[s.handleDot, { bottom: 6, right: 6 }]} />
             </View>
+
+            {/* Botón de borrar */}
+            <TouchableOpacity
+              style={s.deleteChip}
+              onPress={() => handleDeleteBlock(item.id)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="trash-outline" size={14} color="#F9FAFB" />
+            </TouchableOpacity>
 
             <View style={s.spacerEditTile}>
               <View
@@ -859,13 +919,21 @@ export default function ProfileScreen() {
           delayLongPress={80}
           activeOpacity={0.9}
         >
-          {/* “pines” en las esquinas */}
           <View pointerEvents="none" style={s.editHandles}>
             <View style={[s.handleDot, { top: 6, left: 6 }]} />
             <View style={[s.handleDot, { top: 6, right: 6 }]} />
             <View style={[s.handleDot, { bottom: 6, left: 6 }]} />
             <View style={[s.handleDot, { bottom: 6, right: 6 }]} />
           </View>
+
+          {/* Botón de borrar */}
+          <TouchableOpacity
+            style={s.deleteChip}
+            onPress={() => handleDeleteBlock(item.id)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="trash-outline" size={14} color="#F9FAFB" />
+          </TouchableOpacity>
 
           <View style={[s.editTile, { backgroundColor: bg }]}>
             <Text
@@ -881,8 +949,9 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       );
     },
-    [colors, s],
+    [colors, s, handleDeleteBlock],
   );
+
 
 
   return (
@@ -920,9 +989,7 @@ export default function ProfileScreen() {
               keyExtractor={(item) => item.id}
               onDragEnd={({ data }) => {
                 setSpaceBlocks(data);
-                // persist new order after drag ends
-                saveProfileSpace(data, profileBgThemeId);
-                setIsEditingLayout(prev => !prev);
+                void persistSpace(data);
               }}
               renderItem={renderEditableItem}
               numColumns={2}
@@ -1336,6 +1403,17 @@ const styles = (c: Palette) =>
       borderRadius: 999,
       backgroundColor: '#F9FAFB',
     },
+    deleteChip: {
+      position: 'absolute',
+      top: 4,
+      right: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 999,
+      backgroundColor: 'rgba(15,23,42,0.9)',
+      zIndex: 10,
+    },
+
     // Author
     authorTileInner: {
     aspectRatio: 1,

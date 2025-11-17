@@ -1,23 +1,27 @@
 // app/screens/book-detail.tsx
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme, Palette } from '../theme/theme';
-
+import { supabase } from '../../src/lib/supabase';
 
 export default function BookDetailScreen() {
   const { colors } = useTheme();
   const s = useMemo(() => styles(colors), [colors]);
   const router = useRouter();
   const params = useLocalSearchParams();
+
+  const docId =
+    typeof params.id === 'string' ? params.id : null; // 👈 id del documento en Supabase
 
   const bookTitle =
     typeof params.title === 'string' ? params.title : 'bookname';
@@ -28,29 +32,91 @@ export default function BookDetailScreen() {
       ? params.synopsis
       : 'Here goes the synopsis of the book. You can pass it as a param or replace this text with the real description from your database.';
 
+  const [tags, setTags] = useState<string[]>([]);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // 🔄 Cargar tags del documento al abrir la pantalla
+  useEffect(() => {
+    if (!docId) return;
+
+    const loadTags = async () => {
+      const { data, error } = await supabase
+        .from('documents')
+        .select('tags')
+        .eq('id', docId)
+        .single();
+
+      if (error || !data) return;
+
+      const arr = (data.tags ?? []) as string[];
+      setTags(arr);
+      setSaved(arr.includes('saved'));
+    };
+
+    loadTags();
+  }, [docId]);
+
+  // ⭐ Alternar guardado
+  const toggleSaved = useCallback(async () => {
+    if (!docId || saving) return;
+    setSaving(true);
+    try {
+      const baseTags = tags ?? [];
+      let nextTags: string[];
+
+      if (saved) {
+        // Quitar "saved"
+        nextTags = baseTags.filter((t) => t !== 'saved');
+      } else {
+        // Añadir "saved"
+        nextTags = baseTags.includes('saved')
+          ? baseTags
+          : [...baseTags, 'saved'];
+      }
+
+      const { error } = await supabase
+        .from('documents')
+        .update({ tags: nextTags.length ? nextTags : null })
+        .eq('id', docId);
+
+      if (error) {
+        Alert.alert('Error', 'Could not update saved state.');
+        return;
+      }
+
+      setTags(nextTags);
+      setSaved(nextTags.includes('saved'));
+    } catch (e) {
+      Alert.alert('Error', 'Unexpected error updating saved state.');
+    } finally {
+      setSaving(false);
+    }
+  }, [docId, saved, tags, saving]);
+
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={s.safe}>
       <View style={s.screen}>
-        {/* HEADER igual al de Home */}
+        {/* HEADER igual al de Home (sin el bookmark ahora) */}
         <View style={s.headerWrap}>
           <View style={s.headerRow}>
-            <TouchableOpacity
-              style={s.iconBtn}
-            >
+            <TouchableOpacity style={s.iconBtn}>
               <Ionicons name="menu" size={24} color={colors.text} />
             </TouchableOpacity>
 
             <Text style={s.headerTitle}>Home</Text>
 
-            <TouchableOpacity style={s.iconBtn}>
-              <Ionicons name="search" size={22} color={colors.text} />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={s.iconBtn}
-              onPress={() => router.back()}
-            >
-              <Ionicons name="close-outline" size={22} color={colors.text} />
-            </TouchableOpacity>
+            <View style={s.headerRight}>
+              <TouchableOpacity style={s.iconBtn}>
+                <Ionicons name="search" size={22} color={colors.text} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.iconBtn}
+                onPress={() => router.back()}
+              >
+                <Ionicons name="close-outline" size={22} color={colors.text} />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -60,10 +126,22 @@ export default function BookDetailScreen() {
         >
           {/* CARD PRINCIPAL */}
           <View style={s.card}>
+            {/* 🔖 Botoncito de guardar dentro del recuadro */}
+              <TouchableOpacity
+                style={s.bookmarkBtn}
+                onPress={toggleSaved}
+                disabled={saving}
+              >
+                <Ionicons
+                  name={saved ? 'bookmark' : 'bookmark-outline'}
+                  size={18}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
+
             <View style={s.topRow}>
               {/* Portada */}
               <View style={s.coverBig}>
-                {/* Si luego tienes imagen real, reemplaza por <Image /> */}
                 <Text style={s.coverText}>Cover</Text>
               </View>
 
@@ -123,6 +201,10 @@ const styles = (c: Palette) =>
       alignItems: 'center',
       justifyContent: 'space-between',
     },
+    headerRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
     iconBtn: { padding: 4 },
     headerTitle: {
       color: c.text,
@@ -142,7 +224,24 @@ const styles = (c: Palette) =>
       borderWidth: 1,
       borderColor: c.border,
       marginBottom: 20,
+      position: 'relative', // 👈 necesario para el botón absoluto
     },
+
+    // 🔖 Botón de bookmark dentro del recuadro
+    bookmarkBtn: {
+      position: 'absolute',
+      top: 10,
+      right: 10,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: c.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+
     topRow: {
       flexDirection: 'row',
       alignItems: 'flex-start',

@@ -16,6 +16,7 @@ export type SpaceBlock = {
   title: string;       // Ej: "Author"
   description: string; // Subtítulo / ayuda
   value: string;       // Contenido que escribe el usuario
+  data?: Record<string, any>; // Datos adicionales específicos del bloque
 
   accentColor?: string;
   accentTextColor?: string;

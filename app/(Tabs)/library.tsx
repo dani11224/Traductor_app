@@ -43,6 +43,11 @@ export default function LibraryScreen() {
   const { colors } = useTheme();
   const s = useMemo(() => styles(colors), [colors]);
 
+  const savedDocs = useMemo(
+    () => docs.filter((d) => d.tags && d.tags.includes('saved')),
+    [docs],
+  );
+
   const loadDocs = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -266,20 +271,27 @@ export default function LibraryScreen() {
             )}
           </View>
 
-          {/* Saved Books (placeholder usando algunos docs) */}
+          {/* Saved Books: solo docs con tag "saved" */}
           <View style={s.section}>
             <View style={s.sectionHeader}>
               <Text style={s.sectionTitle}>Saved Books</Text>
               <Ionicons name="bookmark" size={22} color={colors.text} />
             </View>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={s.horizontalList}
-            >
-              {docs.slice(0, 4).map(renderBookCard)}
-            </ScrollView>
+            {savedDocs.length === 0 ? (
+              <Text style={s.muted}>
+                You haven&apos;t saved any books yet. Open a book and tap the
+                bookmark icon to save it.
+              </Text>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={s.horizontalList}
+              >
+                {savedDocs.map(renderBookCard)}
+              </ScrollView>
+            )}
           </View>
 
           {/* Shared Books (placeholder) */}
