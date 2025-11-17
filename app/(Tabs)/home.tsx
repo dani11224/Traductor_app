@@ -1,22 +1,50 @@
 // app/main/(tabs)/home.tsx
-import React, { useMemo } from 'react';
+import React, {
+  useMemo,
+  useEffect,
+  useState,
+  useCallback,
+} from 'react';
 import {
+  Image,
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTheme, Palette } from '../theme/theme';
+import { supabase } from '../../src/lib/supabase';
 
 type Book = {
   id: string;
   title: string;
   author: string;
 };
+
+type DocRow = {
+  id: string;
+  owner_id: string;
+  storage_path: string;
+  original_filename: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  pages: number | null;
+  language: string | null;
+  title: string | null;
+  tags: string[] | null;
+  status: 'uploaded' | 'processing' | 'ready' | 'error';
+  created_at: string;
+  updated_at: string;
+  synopsis: string | null;
+  cover_path: string | null;
+  cover_url?: string | null;
+};
+
 
 const BEST_BOOKS: Book[] = [
   { id: '1', title: 'Mi portada de libro', author: 'Bookname' },
@@ -34,6 +62,70 @@ export default function HomeScreen() {
   const { colors } = useTheme();
   const s = useMemo(() => styles(colors), [colors]);
   const router = useRouter();
+
+  const [latestDocs, setLatestDocs] = useState<DocRow[]>([]);
+  const [loadingLatest, setLoadingLatest] = useState(true);
+
+  const loadLatest = useCallback(async () => {
+    setLoadingLatest(true);
+    const { data, error } = await supabase
+      .from('documents')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (error) {
+      console.log('Error loading latest releases', error.message);
+      setLatestDocs([]);
+    } else {
+      const rows = (data ?? []) as DocRow[];
+
+      const published = rows.filter(
+        (d) => d.tags && d.tags.includes('published'),
+      );
+
+      const withCovers = await Promise.all(
+        published.map(async (doc) => {
+          if (doc.cover_path) {
+            const { data: signed, error: signErr } = await supabase.storage
+              .from('documents')
+              .createSignedUrl(doc.cover_path, 60 * 60);
+
+            return {
+              ...doc,
+              cover_url: signErr ? null : signed?.signedUrl ?? null,
+            };
+          }
+          return { ...doc, cover_url: null };
+        }),
+      );
+
+      setLatestDocs(withCovers);
+    }
+    setLoadingLatest(false);
+  }, []);
+
+  useEffect(() => {
+    loadLatest();
+  }, [loadLatest]);
+
+  const openDocDetail = useCallback(
+    (doc: DocRow) => {
+      router.push({
+        pathname: 'screens/book-detail',
+        params: {
+          origin: 'home', // 👈 también sólo lectura aquí
+          id: doc.id,
+          title: doc.title ?? doc.original_filename,
+          author: doc.language ?? 'Unknown',
+          synopsis:
+            doc.original_filename ??
+            'Here goes the synopsis of the book. You can edit this later.',
+        },
+      });
+    },
+    [router],
+  );
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={s.safe}>
@@ -77,12 +169,13 @@ export default function HomeScreen() {
                   activeOpacity={0.85}
                   onPress={() =>
                     router.push({
-                        pathname: 'screens/book-detail',
-                        params: {
+                      pathname: 'screens/book-detail',
+                      params: {
+                        origin: 'home', // 👈 modo sólo lectura
                         title: book.title,
                         author: book.author,
                         synopsis: 'Texto de sinopsis que quieras pasar',
-                        },
+                      },
                     })
                   }
                 >
@@ -146,6 +239,67 @@ export default function HomeScreen() {
               ))}
             </ScrollView>
           </View>
+          {/* Latest releases (publicados desde tu Library) */}
+          <View style={s.section}>
+            <View style={s.sectionHeaderRow}>
+              <Text style={s.sectionTitle}>Latest Releases</Text>
+              <TouchableOpacity onPress={loadLatest}>
+                <Ionicons
+                  name="refresh"
+                  size={18}
+                  color={colors.textMuted ?? colors.text}
+                />
+              </TouchableOpacity>
+            </View>
+
+            {loadingLatest ? (
+              <View style={s.loadingRow}>
+                <ActivityIndicator size="small" color={colors.accent} />
+                <Text style={s.loadingText}>
+                  Loading latest releases…
+                </Text>
+              </View>
+            ) : latestDocs.length === 0 ? (
+              <Text style={s.emptyText}>
+                No published books yet. Publish one from your Library.
+              </Text>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={s.horizontalList}
+              >
+                {latestDocs.map((doc) => (
+                  <TouchableOpacity
+                    key={doc.id}
+                    style={s.bestBookCard}
+                    activeOpacity={0.85}
+                    onPress={() => openDocDetail(doc)}
+                  >
+                    <View style={s.bestBookCover}>
+                      {doc.cover_url ? (
+                        <Image
+                          source={{ uri: doc.cover_url }}
+                          style={{ width: '100%', height: '100%', borderRadius: 14 }}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <Text style={s.coverText}>PDF</Text>
+                      )}
+                    </View>
+                    <View style={s.bestBookInfo}>
+                      <Text style={s.bookTitle} numberOfLines={1}>
+                        {doc.title ?? doc.original_filename}
+                      </Text>
+                      <Text style={s.bookAuthor} numberOfLines={1}>
+                        {doc.language ?? 'Unknown'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
         </ScrollView>
       </View>
     </SafeAreaView>
@@ -191,6 +345,12 @@ const styles = (c: Palette) =>
     section: {
       marginBottom: 24,
     },
+    sectionHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+    },
     sectionTitle: {
       color: c.text,
       fontSize: 20,
@@ -199,6 +359,19 @@ const styles = (c: Palette) =>
     },
     horizontalList: {
       paddingRight: 12,
+    },
+    loadingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    loadingText: {
+      marginLeft: 8,
+      color: c.textMuted,
+      fontSize: 12,
+    },
+    emptyText: {
+      color: c.textMuted,
+      fontSize: 12,
     },
 
     // Best Books

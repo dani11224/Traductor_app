@@ -1,6 +1,7 @@
 // app/main/(Tabs)/library.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Image,
   View,
   Text,
   ScrollView,
@@ -10,6 +11,7 @@ import {
   RefreshControl,
   StyleSheet,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
@@ -32,7 +34,11 @@ type DocRow = {
   status: 'uploaded' | 'processing' | 'ready' | 'error';
   created_at: string;
   updated_at: string;
+  synopsis: string | null;
+  cover_path: string | null;
+  cover_url?: string | null;
 };
+
 
 export default function LibraryScreen() {
   const router = useRouter();
@@ -48,6 +54,7 @@ export default function LibraryScreen() {
     [docs],
   );
 
+
   const loadDocs = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -57,7 +64,25 @@ export default function LibraryScreen() {
     if (error) {
       Alert.alert('Error', error.message);
     } else {
-      setDocs((data ?? []) as DocRow[]);
+      const rows = (data ?? []) as DocRow[];
+
+      const withCovers = await Promise.all(
+        rows.map(async (doc) => {
+          if (doc.cover_path) {
+            const { data: signed, error: signErr } = await supabase.storage
+              .from('documents')
+              .createSignedUrl(doc.cover_path, 60 * 60);
+
+            return {
+              ...doc,
+              cover_url: signErr ? null : signed?.signedUrl ?? null,
+            };
+          }
+          return { ...doc, cover_url: null };
+        }),
+      );
+
+      setDocs(withCovers);
     }
     setLoading(false);
   }, []);
@@ -65,6 +90,12 @@ export default function LibraryScreen() {
   useEffect(() => {
     loadDocs();
   }, [loadDocs]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadDocs();
+    }, [loadDocs]),
+  );
 
   const pickAndUpload = useCallback(async () => {
     try {
@@ -146,9 +177,20 @@ export default function LibraryScreen() {
     }
   }, []);
 
-  const openDoc = useCallback(
-    async (doc: DocRow) => {
-      router.push({ pathname: '/[id]', params: { id: doc.id } });
+  const openBookDetail = useCallback(
+    (doc: DocRow) => {
+      router.push({
+        pathname: 'screens/book-detail',
+        params: {
+          origin: 'library', // 👈 MUY importante
+          id: doc.id,        // 👈 para que docId NO sea null
+          title: doc.title ?? doc.original_filename,
+          author: doc.language ?? 'Unknown',
+          synopsis:
+            doc.original_filename ??
+            'Here goes the synopsis of the book. You can edit this later.',
+        },
+      });
     },
     [router],
   );
@@ -187,12 +229,19 @@ export default function LibraryScreen() {
       key={doc.id}
       style={s.bookCard}
       activeOpacity={0.9}
-      onPress={() => openDoc(doc)}
+      onPress={() => openBookDetail(doc)}      // 👈 antes quizá llamabas openDoc
       onLongPress={() => confirmDelete(doc)}
     >
       <View style={s.bookCover}>
-        {/* Aquí luego puedes poner una Image con la portada real */}
-        <Text style={s.coverText}>PDF</Text>
+        {doc.cover_url ? (
+          <Image
+            source={{ uri: doc.cover_url }}
+            style={s.bookCoverImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <Text style={s.coverText}>PDF</Text>
+        )}
       </View>
       <Text style={s.bookCardTitle} numberOfLines={1}>
         {doc.title ?? doc.original_filename}
@@ -280,8 +329,8 @@ export default function LibraryScreen() {
 
             {savedDocs.length === 0 ? (
               <Text style={s.muted}>
-                You haven&apos;t saved any books yet. Open a book and tap the
-                bookmark icon to save it.
+                You haven&apos;t saved any books yet. Open a book in Library and
+                tap the bookmark icon to save it.
               </Text>
             ) : (
               <ScrollView
@@ -413,6 +462,11 @@ const styles = (c: Palette) =>
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: 6,
+    },
+    bookCoverImage: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 18,
     },
     coverText: {
       color: c.textMuted,
