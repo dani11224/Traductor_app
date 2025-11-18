@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ActivityIndicator, Alert, StyleSheet, ScrollView, Image, TouchableOpacity, Platform, Modal } from 'react-native';
+import { View, Text, ActivityIndicator, Alert, StyleSheet, ScrollView, Image, TouchableOpacity, Platform, Modal, KeyboardAvoidingView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { WebView } from 'react-native-webview';
-import { supabase } from '../../src/lib/supabase'; // ajusta la ruta si tu cliente está en otro sitio
+import { supabase } from '../../src/lib/supabase'; 
+import { DocAssistantPanel } from '../../src/components/DocAssistantPanel';
 
 // 🎨 Paleta (la misma que Login/Register)
 const colors = {
@@ -65,6 +66,9 @@ export default function DocumentViewer() {
   const [translatedPdfUrl, setTranslatedPdfUrl] = useState<string | null>(null);
   const [showTranslatedPdf, setShowTranslatedPdf] = useState(false);
 
+  // 🆕 chatbot
+  const [assistantOpen, setAssistantOpen] = useState(false);
+
   const s = useMemo(() => styles(colors), []);
   const PDF_BACKEND_URL = process.env.EXPO_PUBLIC_PDF_BACKEND_URL || "";
   console.log('PDF_BACKEND_URL', PDF_BACKEND_URL);
@@ -124,6 +128,9 @@ export default function DocumentViewer() {
     const m = doc?.mime_type ?? '';
     return m.startsWith('image/');
   }, [doc]);
+
+    // 🆕 Texto que verá el asistente (texto extraído o plano del documento)
+  const contextForAssistant = textContent ?? '';
 
   const isText = useMemo(() => {
     const m = doc?.mime_type ?? '';
@@ -256,6 +263,22 @@ const ensurePdfText = async () => {
   setMountPdfWV(true);
 };
 
+  // 🆕 Abre el asistente y, si es PDF, se asegura de extraer el texto primero
+const openAssistant = async () => {
+  try {
+    // Si es PDF y aún no tenemos texto extraído, dispara el extractor oculto
+    if (isPDF && (!textContent || textContent.length === 0)) {
+      await ensurePdfText();
+    }
+    setAssistantOpen(true);
+  } catch (e: any) {
+    Alert.alert(
+      'Assistant error',
+      e?.message ?? 'Could not prepare the text for the assistant'
+    );
+  }
+};
+
 // 🆕 Recibe el texto desde el WebView (PDF.js)
 const onPdfWVMessage = async (evt: any) => {
   try {
@@ -327,7 +350,7 @@ const translatePdfNow = async (opts?: { to?: string; autoOpenOverlay?: boolean }
 
   const saveTranslatedCopy = async () => {
     try {
-      if (!translatedText || !doc) {
+      if ((!translatedText && !(isPDF && translatedPdfUrl)) || !doc) {
         Alert.alert('Nothing to save', 'Generate a translation first.');
         return;
       }
@@ -343,13 +366,54 @@ const translatePdfNow = async (opts?: { to?: string; autoOpenOverlay?: boolean }
           .replace(/[^\w.-]+/g, '_')
           .slice(0, 80);
 
+      if (isPDF && translatedPdfUrl) {
+        const ext = 'pdf';
+        const objectName = `${user.id}/translations/${doc.id}-${targetLang}-${baseName}.${ext}`;
+
+        const res = await fetch(translatedPdfUrl);
+        if (!res.ok) {
+          throw new Error('Could not download translated PDF');
+        }
+        const arrayBuffer = await res.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        const contentType = 'application/pdf';
+
+        const { error: upErr } = await supabase.storage
+          .from('documents')
+          .upload(objectName, bytes, {
+            contentType,
+            upsert: true, // si prefieres no sobrescribir, pon false
+          });
+        if (upErr) throw upErr;
+
+        const { data, error } = await supabase
+          .from('document_translations')
+          .insert({
+            doc_id: doc.id,
+            owner_id: user.id,
+            source_lang: 'auto',   // o guarda el que uses si lo detectas
+            target_lang: targetLang,
+            storage_path: objectName,
+            mime_type: contentType,
+            size_bytes: bytes.length,
+            status: 'ready',
+          })
+          .select('storage_path')
+          .single();
+        if (error) throw error;
+
+        setSavedPath(data.storage_path);
+        Alert.alert('Saved', 'Translated copy stored in your Library.');
+        return;
+      }
+
       const isJson = (doc.mime_type ?? '').toLowerCase() === 'application/json';
       const ext = isJson ? 'json' : 'txt';
       const objectName = `${user.id}/translations/${doc.id}-${targetLang}-${baseName}.${ext}`;
 
       // 3) Bytes UTF-8 (sin tocar tu otra lógica de uploads)
       const encoder = new TextEncoder();
-      const bytes = encoder.encode(translatedText);
+      const bytes = encoder.encode(translatedText as string);
       const contentType = isJson
         ? 'application/json; charset=utf-8'
         : 'text/plain; charset=utf-8';
@@ -409,43 +473,38 @@ const translatePdfNow = async (opts?: { to?: string; autoOpenOverlay?: boolean }
           <Text style={s.langBtnText}>{(targetLang || 'en').toUpperCase()}</Text>
         </TouchableOpacity>
 
-        {/* Botón Translate */}
-        <TouchableOpacity style={s.translateBtn} onPress={onPressTranslate} disabled={translating}>
+        {/* Botón Translate / PDF Translate unificado */}
+        <TouchableOpacity
+          style={s.translateBtn}
+          onPress={isPDF ? openTranslatedPdf : onPressTranslate}
+          disabled={isPDF ? pdfTranslating : translating}
+        >
           <Text style={s.translateBtnText}>
-            {translating
-              ? 'Translating…'
-              : translatedText && translatedForLang === targetLang
-                ? 'View'
-                : 'Translate'}
+            {isPDF
+              ? pdfTranslating
+                ? 'PDF…'
+                : translatedPdfUrl
+                  ? 'Regen PDF'
+                  : 'PDF Translate'
+              : translating
+                ? 'Translating…'
+                : translatedText && translatedForLang === targetLang
+                  ? 'View'
+                  : 'Translate'}
           </Text>
         </TouchableOpacity>
 
-        {/* Botón Guardar copia */}
+        {/* 🆕 Botón Asistente IA */}
         <TouchableOpacity
-          style={[s.translateBtn, { marginLeft: 10, backgroundColor: colors.primary }]}
-          onPress={saveTranslatedCopy}
-          disabled={saving || !translatedText}
+          style={[s.translateBtn, { marginLeft: 10, backgroundColor: colors.card }]}
+          onPress={openAssistant}
+          disabled={loading || (!isText && !isPDF)}
         >
-          <Text style={s.translateBtnText}>{saving ? 'Saving…' : 'Save copy'}</Text>
+          <Text style={[s.translateBtnText, { color: colors.text }]}>
+            AI
+          </Text>
         </TouchableOpacity>
       </View>
-
-      {/* Botón Translate PDF (solo si es PDF) */}
-      {isPDF && (
-        <TouchableOpacity
-          style={[s.translateBtn, { marginLeft: 8, backgroundColor: colors.accent }]}
-          onPress={openTranslatedPdf}
-          disabled={pdfTranslating}
-        >
-          <Text style={s.translateBtnText}>
-            {pdfTranslating
-              ? "PDF…"
-              : translatedPdfUrl
-              ? "Regen PDF"
-              : "PDF Translate"}
-          </Text>
-        </TouchableOpacity>
-      )}
 
       {/* Contenido original */}
       <View style={s.content}>
@@ -486,6 +545,18 @@ const translatePdfNow = async (opts?: { to?: string; autoOpenOverlay?: boolean }
               allowUniversalAccessFromFileURLs
               originWhitelist={["*"]}
             />
+
+            {translatedPdfUrl && (
+              <View style={{ paddingVertical: 8, alignItems: 'center' }}>
+                <TouchableOpacity
+                  style={[s.translateBtn, { backgroundColor: colors.primary, minWidth: 160 }]}
+                  onPress={saveTranslatedCopy}
+                  disabled={saving}
+                >
+                  <Text style={s.translateBtnText}>{saving ? 'Saving…' : 'Save copy'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </>
         )}
 
@@ -554,9 +625,53 @@ const translatePdfNow = async (opts?: { to?: string; autoOpenOverlay?: boolean }
                 {translatedText ?? '(No translation yet)'}
               </Text>
             </ScrollView>
+
+            {/* Botón Guardar copia (solo cuando haya traducción) */}
+            {translatedText && (
+              <View style={{ paddingHorizontal: 16, paddingBottom: 14, alignItems: 'center' }}>
+                <TouchableOpacity
+                  style={[s.translateBtn, { backgroundColor: colors.primary, minWidth: 160 }]}
+                  onPress={saveTranslatedCopy}
+                  disabled={saving}
+                >
+                  <Text style={s.translateBtnText}>{saving ? 'Saving…' : 'Save copy'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
+
+      {/* 🆕 Modal Asistente contextual del documento */}
+      <Modal
+        visible={assistantOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAssistantOpen(false)}
+      >
+        <KeyboardAvoidingView
+          style={s.overlayBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={[s.overlayCard, { minHeight: '55%' }]}>
+            <View style={s.overlayHeader}>
+              <Text style={s.overlayTitle}>Document assistant</Text>
+              <TouchableOpacity
+                style={s.overlayClose}
+                onPress={() => setAssistantOpen(false)}
+              >
+                <Text style={s.overlayCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ flex: 1, padding: 12 }}>
+              {/* Aquí usamos el texto del documento como contexto */}
+              <DocAssistantPanel contextText={contextForAssistant} />
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* 🆕 WebView oculto para extraer PDF (no interfiere con tu UI) */}
       {mountPdfWV && !!pdfExtractHTML && (
         <WebView

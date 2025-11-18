@@ -1,22 +1,22 @@
-{"level":"info","time":"2025-11-14T22:37:10Z","message":"Thank you for trying Cloudflare Tunnel. Doing so, without a Cloudflare account, is a quick way to experiment and try it out. However, be aware that these account-less Tunnels have no uptime guarantee, are subject to the Cloudflare Online Services Terms of Use (https://www.cloudflare.com/website-terms/), and Cloudflare reserves the right to investigate your use of Tunnels for violations of such terms. If you intend to use Tunnels in production you should use a pre-created named tunnel by following: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps"}
-{"level":"info","time":"2025-11-14T22:37:10Z","message":"Requesting new quick Tunnel on trycloudflare.com..."}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"+--------------------------------------------------------------------------------------------+"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"|  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"|  https://platinum-ruby-seat-million.trycloudflare.com                                      |"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"+--------------------------------------------------------------------------------------------+"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"Cannot determine default configuration path. No file [config.yml config.yaml] in [~/.cloudflared ~/.cloudflare-warp ~/cloudflare-warp]"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"Version 2025.11.1 (Checksum 413f9b24dc6e61a455564651524f167b8ce29ac4ccd40703dea7af93cd37ed39)"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"GOOS: windows, GOVersion: go1.24.9, GoArch: amd64"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"Settings: map[ha-connections:1 logfile:C:\\Users\\Daniel\\Documents\\GitHub\\Traductor_app\\cf_backend.log protocol:quic url:http://127.0.0.1:9000]"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"cloudflared will not automatically update on Windows systems."}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"Generated Connector ID: 615c6ffc-7ff2-4b1f-bb21-28cbada81caf"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"Initial protocol quic"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"ICMP proxy will use 192.168.1.105 as source for IPv4"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"ICMP proxy will use fe80::62b6:823b:155f:171b in zone Wi-Fi as source for IPv6"}
-{"level":"error","originCertPath":"","time":"2025-11-14T22:37:15Z","message":"Cannot determine default origin certificate path. No file cert.pem in [~/.cloudflared ~/.cloudflare-warp ~/cloudflare-warp]. You need to specify the origin certificate path by specifying the origincert option in the configuration file, or set TUNNEL_ORIGIN_CERT environment variable"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"cloudflared does not support loading the system root certificate pool on Windows. Please use --origin-ca-pool <PATH> to specify the path to the certificate pool"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"ICMP proxy will use 192.168.1.105 as source for IPv4"}
-{"level":"info","event":0,"ip":"198.41.200.53","connIndex":0,"time":"2025-11-14T22:37:15Z","message":"Tunnel connection curve preferences: [X25519MLKEM768 CurveP256]"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"ICMP proxy will use fe80::62b6:823b:155f:171b in zone Wi-Fi as source for IPv6"}
-{"level":"info","time":"2025-11-14T22:37:15Z","message":"Starting metrics server on 127.0.0.1:20242/metrics"}
-{"level":"info","event":0,"connection":"ef6acd18-dcb3-40d3-954f-e28ad72117b4","connIndex":0,"location":"mia07","ip":"198.41.200.53","protocol":"quic","time":"2025-11-14T22:37:15Z","message":"Registered tunnel connection"}
+{"level":"info","time":"2025-11-18T17:23:24Z","message":"Thank you for trying Cloudflare Tunnel. Doing so, without a Cloudflare account, is a quick way to experiment and try it out. However, be aware that these account-less Tunnels have no uptime guarantee, are subject to the Cloudflare Online Services Terms of Use (https://www.cloudflare.com/website-terms/), and Cloudflare reserves the right to investigate your use of Tunnels for violations of such terms. If you intend to use Tunnels in production you should use a pre-created named tunnel by following: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps"}
+{"level":"info","time":"2025-11-18T17:23:24Z","message":"Requesting new quick Tunnel on trycloudflare.com..."}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"+--------------------------------------------------------------------------------------------+"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"|  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"|  https://ciao-jaguar-came-presence.trycloudflare.com                                       |"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"+--------------------------------------------------------------------------------------------+"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"Cannot determine default configuration path. No file [config.yml config.yaml] in [~/.cloudflared ~/.cloudflare-warp ~/cloudflare-warp]"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"Version 2025.11.1 (Checksum 413f9b24dc6e61a455564651524f167b8ce29ac4ccd40703dea7af93cd37ed39)"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"GOOS: windows, GOVersion: go1.24.9, GoArch: amd64"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"Settings: map[ha-connections:1 logfile:C:\\Users\\Daniel\\Documents\\GitHub\\Traductor_app\\cf_backend.log protocol:quic url:http://127.0.0.1:9000]"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"cloudflared will not automatically update on Windows systems."}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"Generated Connector ID: ed73c573-0085-4e64-92c0-9695e29229a8"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"Initial protocol quic"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"ICMP proxy will use 192.168.1.105 as source for IPv4"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"ICMP proxy will use fe80::62b6:823b:155f:171b in zone Wi-Fi as source for IPv6"}
+{"level":"error","originCertPath":"","time":"2025-11-18T17:23:28Z","message":"Cannot determine default origin certificate path. No file cert.pem in [~/.cloudflared ~/.cloudflare-warp ~/cloudflare-warp]. You need to specify the origin certificate path by specifying the origincert option in the configuration file, or set TUNNEL_ORIGIN_CERT environment variable"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"cloudflared does not support loading the system root certificate pool on Windows. Please use --origin-ca-pool <PATH> to specify the path to the certificate pool"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"ICMP proxy will use 192.168.1.105 as source for IPv4"}
+{"level":"info","event":0,"ip":"198.41.200.23","connIndex":0,"time":"2025-11-18T17:23:28Z","message":"Tunnel connection curve preferences: [X25519MLKEM768 CurveP256]"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"ICMP proxy will use fe80::62b6:823b:155f:171b in zone Wi-Fi as source for IPv6"}
+{"level":"info","time":"2025-11-18T17:23:28Z","message":"Starting metrics server on 127.0.0.1:20242/metrics"}
+{"level":"info","event":0,"connection":"79e4946f-08ab-40f0-babe-5191396f18de","connIndex":0,"location":"mia05","ip":"198.41.200.23","protocol":"quic","time":"2025-11-18T17:23:29Z","message":"Registered tunnel connection"}
