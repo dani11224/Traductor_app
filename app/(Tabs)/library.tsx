@@ -57,35 +57,37 @@ export default function LibraryScreen() {
 
   const loadDocs = useCallback(async () => {
     setLoading(true);
+
+    // 1) Usuario actual
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+
+    if (userErr || !user) {
+      // Si no hay usuario logueado, no hay "My Books"
+      setDocs([]);
+      setLoading(false);
+      return;
+    }
+
+    // 2) Solo documentos cuyo owner_id sea el usuario actual
     const { data, error } = await supabase
       .from('documents')
       .select('*')
+      .eq('owner_id', user.id)                // 👈 FILTRO CLAVE
       .order('created_at', { ascending: false });
+
     if (error) {
       Alert.alert('Error', error.message);
+      setDocs([]);
     } else {
-      const rows = (data ?? []) as DocRow[];
-
-      const withCovers = await Promise.all(
-        rows.map(async (doc) => {
-          if (doc.cover_path) {
-            const { data: signed, error: signErr } = await supabase.storage
-              .from('documents')
-              .createSignedUrl(doc.cover_path, 60 * 60);
-
-            return {
-              ...doc,
-              cover_url: signErr ? null : signed?.signedUrl ?? null,
-            };
-          }
-          return { ...doc, cover_url: null };
-        }),
-      );
-
-      setDocs(withCovers);
+      setDocs((data ?? []) as DocRow[]);
     }
+
     setLoading(false);
   }, []);
+
 
   useEffect(() => {
     loadDocs();

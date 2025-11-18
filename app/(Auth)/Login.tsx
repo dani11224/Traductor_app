@@ -8,9 +8,6 @@ import {
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
-// import { useNavigation } from "@react-navigation/native";
-// import type { NavigationProp } from "@react-navigation/native";
-// import type { RootStackParamList } from "../navigation";
 import { usePageTurn, HideWhileTurning } from "../../src/components/transitions/PageTurnOverlay";
 import { useRouter } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
@@ -131,8 +128,15 @@ export default function Login() {
                   colors={colors}
                 />
 
-                <TouchableOpacity onPress={() => { /* TODO: forgot flow */ }}>
-                  <Text style={{ color: colors.textMuted, textAlign: "right", marginTop: 2 }}>
+                <TouchableOpacity
+                  style={{ alignSelf: 'flex-end', marginTop: 8 }}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/(Auth)/reset-password',
+                    })
+                  }
+                >
+                  <Text style={{ color: colors.accent, fontSize: 13 }}>
                     Forgot password?
                   </Text>
                 </TouchableOpacity>
