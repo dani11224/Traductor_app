@@ -134,7 +134,11 @@ export default function HomeScreen() {
         <View style={s.headerWrap}>
           <View style={s.headerRow}>
             <TouchableOpacity style={s.menuBtn}>
-              <Ionicons name="menu" size={24} color={colors.text} />
+              <Image
+                source={require('/src/assets/images/logoLektia.png')} // 👈 ajusta la ruta/nombre si hace falta
+                style={s.logo}
+                resizeMode="contain"
+              />
             </TouchableOpacity>
 
             <Text style={s.headerTitle}>Home</Text>
@@ -318,6 +322,11 @@ const styles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, backgroundColor: c.bg },
     screen: { flex: 1, backgroundColor: c.bg },
+
+    logo: {
+      width: 28,
+      height: 28,
+    },
 
     // Header
     headerWrap: {

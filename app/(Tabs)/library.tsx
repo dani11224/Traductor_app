@@ -39,6 +39,8 @@ type DocRow = {
   cover_url?: string | null;
 };
 
+const COVER_BUCKET = 'documents';
+
 
 export default function LibraryScreen() {
   const router = useRouter();
@@ -65,29 +67,49 @@ export default function LibraryScreen() {
     } = await supabase.auth.getUser();
 
     if (userErr || !user) {
-      // Si no hay usuario logueado, no hay "My Books"
       setDocs([]);
       setLoading(false);
       return;
     }
 
-    // 2) Solo documentos cuyo owner_id sea el usuario actual
+    // 2) Documentos del usuario
     const { data, error } = await supabase
       .from('documents')
-      .select('*')
-      .eq('owner_id', user.id)                // 👈 FILTRO CLAVE
+      .select(
+        'id, owner_id, storage_path, original_filename, mime_type, size_bytes, pages, language, title, tags, status, created_at, updated_at, synopsis, cover_path'
+      )
+      .eq('owner_id', user.id)
       .order('created_at', { ascending: false });
 
     if (error) {
       Alert.alert('Error', error.message);
       setDocs([]);
-    } else {
-      setDocs((data ?? []) as DocRow[]);
+      setLoading(false);
+      return;
     }
 
+    const rows = (data ?? []) as DocRow[];
+
+    // 3) Firmar URL de portada igual que haces en home.tsx
+    const withCovers: DocRow[] = await Promise.all(
+      rows.map(async (doc) => {
+        if (doc.cover_path) {
+          const { data: signed, error: signErr } = await supabase.storage
+            .from(COVER_BUCKET) // 'documents'
+            .createSignedUrl(doc.cover_path, 60 * 60); // 1h
+
+          return {
+            ...doc,
+            cover_url: signErr ? null : signed?.signedUrl ?? null,
+          };
+        }
+        return { ...doc, cover_url: null };
+      }),
+    );
+
+    setDocs(withCovers);
     setLoading(false);
   }, []);
-
 
   useEffect(() => {
     loadDocs();
@@ -238,7 +260,7 @@ export default function LibraryScreen() {
         {doc.cover_url ? (
           <Image
             source={{ uri: doc.cover_url }}
-            style={s.bookCoverImage}
+            style={{ width: '100%', height: '100%', borderRadius: 14 }}
             resizeMode="cover"
           />
         ) : (
@@ -261,7 +283,11 @@ export default function LibraryScreen() {
         <View style={s.headerWrap}>
           <View style={s.headerRow}>
             <TouchableOpacity style={s.iconBtn}>
-              <Ionicons name="menu" size={24} color={colors.text} />
+              <Image
+                source={require('/src/assets/images/logoLektia.png')} // 👈 ajusta la ruta/nombre si hace falta
+                style={s.logo}
+                resizeMode="contain"
+              />
             </TouchableOpacity>
 
             <Text style={s.headerTitle}>My Library</Text>
@@ -411,6 +437,11 @@ const styles = (c: Palette) =>
     safe: { flex: 1, backgroundColor: c.bg },
     screen: { flex: 1, backgroundColor: c.bg },
 
+    logo: {
+      width: 28,
+      height: 28,
+    },
+
     headerWrap: {
       paddingHorizontal: 20,
       paddingTop: 8,
@@ -466,13 +497,11 @@ const styles = (c: Palette) =>
     },
     bookCover: {
       height: 150,
-      borderRadius: 18,
-      backgroundColor: c.card,
-      borderWidth: 1,
-      borderColor: c.border,
+      borderRadius: 14,
+      backgroundColor: c.surface,
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: 6,
+      marginBottom: 8,
     },
     bookCoverImage: {
       width: '100%',

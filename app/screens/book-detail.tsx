@@ -161,16 +161,10 @@ export default function BookDetailScreen() {
         {/* HEADER */}
         <View style={s.headerWrap}>
           <View style={s.headerRow}>
-            <TouchableOpacity style={s.iconBtn}>
-              <Ionicons name="menu" size={24} color={colors.text} />
-            </TouchableOpacity>
 
-            <Text style={s.headerTitle}>Home</Text>
+            <Text style={s.headerTitle}> Book Details</Text>
 
             <View style={s.headerRight}>
-              <TouchableOpacity style={s.iconBtn}>
-                <Ionicons name="search" size={22} color={colors.text} />
-              </TouchableOpacity>
               <TouchableOpacity
                 style={s.iconBtn}
                 onPress={() => router.back()}

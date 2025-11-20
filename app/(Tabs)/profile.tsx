@@ -967,7 +967,11 @@ export default function ProfileScreen() {
         <View style={s.headerWrap}>
           <View style={s.headerRow}>
             <TouchableOpacity style={s.iconBtn}>
-              <Ionicons name="menu" size={24} color={colors.text} />
+              <Image
+                source={require('/src/assets/images/logoLektia.png')} // 👈 ajusta la ruta/nombre si hace falta
+                style={s.logo}
+                resizeMode="contain"
+              />
             </TouchableOpacity>
 
             <Text style={s.headerTitle}>Profile</Text>
@@ -1132,10 +1136,6 @@ export default function ProfileScreen() {
                 >
                 <Text style={s.smallBtnText}>Edit</Text>
                 </TouchableOpacity>
-
-                <TouchableOpacity style={s.chatBubble}>
-                <Text style={s.chatBubbleText}>ChatBot{'\n'}Bubble</Text>
-                </TouchableOpacity>
             </View>
             )}
         </View>
@@ -1251,6 +1251,11 @@ const styles = (c: Palette) =>
   StyleSheet.create({
     safe: { flex: 1, /*backgroundColor: c.bg*/ },
     screen: { flex: 1, /*backgroundColor: c.bg*/ },
+
+    logo: {
+      width: 28,
+      height: 28,
+    },
 
     headerWrap: {
       paddingHorizontal: 20,
@@ -1608,20 +1613,6 @@ const styles = (c: Palette) =>
       color: c.text,
       fontSize: 12,
       fontWeight: '600',
-    },
-    chatBubble: {
-      width: 80,
-      height: 80,
-      borderRadius: 40,
-      backgroundColor: c.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    chatBubbleText: {
-      color: c.onPrimary,
-      fontSize: 11,
-      textAlign: 'center',
-      fontWeight: '700',
     },
     themeBtn: {
     width: 48,
